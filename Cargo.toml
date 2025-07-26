@@ -1,0 +1,15 @@
+[package]
+name = "parts"
+version = "0.1.0"
+edition = "2021"
+description = "Prepend and Review ToDo System"
+license = "MIT"
+authors = ["Stephen Waits <steve@waits.net>"]
+
+[dependencies]
+clap = { version = "4.5.41", features = ["derive"] }
+xdg = "3.0.0"
+termion = "2.0"
+
+[dev-dependencies]
+tempfile = "3.20.0"
