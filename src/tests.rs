@@ -442,3 +442,148 @@ mod review_tests {
         assert_eq!(prioritized, expected_prioritized);
     }
 }
+
+#[cfg(test)]
+mod remove_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    /// Helper function to create temporary test files with content
+    fn create_test_file_with_content(content: &str) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        write!(file, "{}", content).unwrap();
+        file
+    }
+
+    /// Tests removing a single item
+    #[test]
+    fn test_remove_single_item() {
+        let content = "First item\nSecond item\nThird item\n";
+        let file = create_test_file_with_content(content);
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[2]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify the item was removed from the file
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "First item\nThird item\n");
+    }
+
+    /// Tests removing multiple items
+    #[test]
+    fn test_remove_multiple_items() {
+        let content = "First item\nSecond item\nThird item\nFourth item\n";
+        let file = create_test_file_with_content(content);
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[1, 3]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify the items were removed from the file
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "Second item\nFourth item\n");
+    }
+
+    /// Tests removing all items results in empty file
+    #[test]
+    fn test_remove_all_items() {
+        let content = "First item\nSecond item\n";
+        let file = create_test_file_with_content(content);
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[1, 2]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify the file is empty
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "");
+    }
+
+    /// Tests handling of invalid item numbers
+    #[test]
+    fn test_remove_invalid_item_number() {
+        let content = "First item\nSecond item\n";
+        let file = create_test_file_with_content(content);
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[3]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify the file content is unchanged
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, content);
+    }
+
+    /// Tests handling of duplicate item numbers
+    #[test]
+    fn test_remove_duplicate_item_numbers() {
+        let content = "First item\nSecond item\nThird item\n";
+        let file = create_test_file_with_content(content);
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[2, 2, 1]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify only unique items were removed
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "Third item\n");
+    }
+
+    /// Tests handling of non-existent file
+    #[test]
+    fn test_remove_from_nonexistent_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let nonexistent_path = temp_dir.path().join("nonexistent.txt");
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(&nonexistent_path, &[1]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify no file was created
+        assert!(!nonexistent_path.exists());
+    }
+
+    /// Tests handling of empty file
+    #[test]
+    fn test_remove_from_empty_file() {
+        let file = create_test_file_with_content("");
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[1]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify the file remains empty
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "");
+    }
+
+    /// Tests that remove doesn't create an archive file (unlike do command)
+    #[test]
+    fn test_remove_does_not_archive() {
+        let content = "First item\nSecond item\n";
+        let file = create_test_file_with_content(content);
+        let temp_dir = tempfile::tempdir().unwrap();
+        let archive_path = temp_dir.path().join("archive.txt");
+
+        let result = std::panic::catch_unwind(|| {
+            remove_items(file.path(), &[1]).unwrap();
+        });
+        assert!(result.is_ok());
+
+        // Verify no archive file was created
+        assert!(!archive_path.exists());
+
+        // Verify the item was removed from the original file
+        let updated_content = std::fs::read_to_string(file.path()).unwrap();
+        assert_eq!(updated_content, "Second item\n");
+    }
+}

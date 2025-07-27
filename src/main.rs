@@ -56,6 +56,12 @@ enum Commands {
         /// Item numbers to archive (from "parts ls")
         numbers: Vec<usize>,
     },
+    /// Remove items without archiving
+    #[command(aliases = ["remove", "delete", "destroy", "forget"])]
+    Rm {
+        /// Item numbers to remove (from "parts ls")
+        numbers: Vec<usize>,
+    },
     /// Scan and review items interactively, from top to bottom
     #[command(alias = "review")]
     Scan,
@@ -82,6 +88,7 @@ fn main() -> io::Result<()> {
         }
         Commands::Up { numbers } => commands::prioritize_items(&note_path, &numbers),
         Commands::Do { numbers } => commands::archive_items(&note_path, &archive_path, &numbers),
+        Commands::Rm { numbers } => commands::remove_items(&note_path, &numbers),
         Commands::Scan => commands::review_note(&note_path, &archive_path),
         Commands::Edit => commands::edit_note(&note_path),
     }

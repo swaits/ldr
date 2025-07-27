@@ -214,7 +214,61 @@ pub fn archive_items(note_path: &Path, archive_path: &Path, numbers: &[usize]) -
     }
 }
 
-/// Interactive review mode that presents each item for user decision.
+/// Removes specified items from the note file without archiving them.
+/// Takes 1-based item numbers, validates them, and permanently deletes them.
+pub fn remove_items(note_path: &Path, numbers: &[usize]) -> io::Result<()> {
+    if !note_path.exists() {
+        println!(
+            "{}No notes found.{}",
+            color::Fg(color::Yellow),
+            color::Fg(color::Reset)
+        );
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(note_path)?;
+    let lines: Vec<String> = content.lines().map(str::to_string).collect();
+
+    if lines.is_empty() {
+        println!(
+            "{}No notes to remove.{}",
+            color::Fg(color::Yellow),
+            color::Fg(color::Reset)
+        );
+        return Ok(());
+    }
+
+    match archive_items_in_content(&lines, numbers) {
+        Ok((new_content, removed_items)) => {
+            fs::write(note_path, new_content)?;
+            println!(
+                "{}✓ Removed {} item(s){}",
+                color::Fg(color::Green),
+                removed_items.len(),
+                color::Fg(color::Reset)
+            );
+            for item in removed_items {
+                println!(
+                    "  {}{}{}",
+                    color::Fg(color::Red),
+                    item,
+                    color::Fg(color::Reset)
+                );
+            }
+            Ok(())
+        }
+        Err(msg) => {
+            println!(
+                "{}{}{}",
+                color::Fg(color::Red),
+                msg,
+                color::Fg(color::Reset)
+            );
+            Ok(())
+        }
+    }
+}
+
 /// Supports prioritizing, archiving, skipping items with keyboard navigation and undo functionality.
 pub fn review_note(note_path: &Path, archive_path: &Path) -> io::Result<()> {
     if !note_path.exists() {
