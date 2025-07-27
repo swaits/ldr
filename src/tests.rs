@@ -1,11 +1,19 @@
-use super::*;
+//! Comprehensive test suite for the parts todo system.
+//!
+//! Tests cover all core functionality including content manipulation,
+//! command operations, filtering, and edge cases.
 
+use crate::commands::*;
+use crate::content::*;
+
+/// Tests adding an entry to empty content
 #[test]
 fn test_add_entry_to_content_empty() {
     let result = add_entry_to_content("", "First item");
     assert_eq!(result, "First item\n");
 }
 
+/// Tests adding an entry to existing content
 #[test]
 fn test_add_entry_to_content_existing() {
     let existing = "Second item\nThird item";
@@ -13,6 +21,7 @@ fn test_add_entry_to_content_existing() {
     assert_eq!(result, "First item\nSecond item\nThird item");
 }
 
+/// Tests adding an entry when existing content has trailing newline
 #[test]
 fn test_add_entry_to_content_with_trailing_newline() {
     let existing = "Second item\nThird item\n";
@@ -20,6 +29,7 @@ fn test_add_entry_to_content_with_trailing_newline() {
     assert_eq!(result, "First item\nSecond item\nThird item");
 }
 
+/// Tests prioritizing a single item by moving it to the top
 #[test]
 fn test_prioritize_items_in_content_single_item() {
     let lines = vec![
@@ -35,6 +45,7 @@ fn test_prioritize_items_in_content_single_item() {
     assert_eq!(prioritized, vec!["Second item"]);
 }
 
+/// Tests prioritizing multiple items in command-line order
 #[test]
 fn test_prioritize_items_in_content_multiple_items() {
     let lines = vec![
@@ -54,6 +65,7 @@ fn test_prioritize_items_in_content_multiple_items() {
     assert_eq!(prioritized, vec!["Third item", "First item"]);
 }
 
+/// Tests error handling for invalid item numbers
 #[test]
 fn test_prioritize_items_in_content_invalid_number() {
     let lines = vec!["First item".to_string(), "Second item".to_string()];
@@ -66,6 +78,7 @@ fn test_prioritize_items_in_content_invalid_number() {
     );
 }
 
+/// Tests error handling for zero item numbers
 #[test]
 fn test_prioritize_items_in_content_zero_number() {
     let lines = vec!["First item".to_string()];
@@ -78,6 +91,7 @@ fn test_prioritize_items_in_content_zero_number() {
     );
 }
 
+/// Tests duplicate removal while preserving order
 #[test]
 fn test_prioritize_items_in_content_duplicates() {
     let lines = vec![
@@ -93,6 +107,7 @@ fn test_prioritize_items_in_content_duplicates() {
     assert_eq!(prioritized, vec!["Second item", "First item"]);
 }
 
+/// Tests archiving a single item
 #[test]
 fn test_archive_items_in_content_single_item() {
     let lines = vec![
@@ -108,6 +123,7 @@ fn test_archive_items_in_content_single_item() {
     assert_eq!(archived, vec!["Second item"]);
 }
 
+/// Tests archiving multiple items
 #[test]
 fn test_archive_items_in_content_multiple_items() {
     let lines = vec![
@@ -124,6 +140,7 @@ fn test_archive_items_in_content_multiple_items() {
     assert_eq!(archived, vec!["First item", "Third item"]);
 }
 
+/// Tests archiving all items results in empty content
 #[test]
 fn test_archive_items_in_content_all_items() {
     let lines = vec!["First item".to_string(), "Second item".to_string()];
@@ -135,6 +152,7 @@ fn test_archive_items_in_content_all_items() {
     assert_eq!(archived, vec!["First item", "Second item"]);
 }
 
+/// Tests error handling for invalid archive item numbers
 #[test]
 fn test_archive_items_in_content_invalid_number() {
     let lines = vec!["First item".to_string()];
@@ -147,6 +165,7 @@ fn test_archive_items_in_content_invalid_number() {
     );
 }
 
+/// Tests duplicate handling in archive operations
 #[test]
 fn test_archive_items_in_content_duplicates() {
     let lines = vec![
@@ -162,6 +181,7 @@ fn test_archive_items_in_content_duplicates() {
     assert_eq!(archived, vec!["First item", "Third item"]);
 }
 
+/// Tests case-insensitive filtering functionality
 #[test]
 fn test_filter_functionality() {
     let lines = vec![
@@ -197,6 +217,7 @@ fn test_filter_functionality() {
     assert_eq!(filtered[0].1, "@work: Review PR");
 }
 
+/// Tests that filtering is case-insensitive
 #[test]
 fn test_case_insensitive_filtering() {
     let lines = vec![
@@ -219,12 +240,14 @@ mod list_tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
+    /// Helper function to create temporary test files with content
     fn create_test_file_with_content(content: &str) -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
         write!(file, "{}", content).unwrap();
         file
     }
 
+    /// Tests listing all items when all flag is true
     #[test]
     fn test_list_with_all_flag() {
         let content = "item 1\nitem 2\nitem 3\nitem 4\nitem 5\nitem 6";
@@ -237,6 +260,7 @@ mod list_tests {
         assert!(result.is_ok());
     }
 
+    /// Tests respecting num limit when all flag is false
     #[test]
     fn test_list_without_all_flag() {
         let content = "item 1\nitem 2\nitem 3\nitem 4\nitem 5\nitem 6";
@@ -249,6 +273,7 @@ mod list_tests {
         assert!(result.is_ok());
     }
 
+    /// Tests filtering with all flag shows all matching items
     #[test]
     fn test_list_with_filter_and_all() {
         let content = "read: book 1\nwrite: article\nread: book 2\ntask: cleanup";
@@ -261,6 +286,7 @@ mod list_tests {
         assert!(result.is_ok());
     }
 
+    /// Tests handling of empty files
     #[test]
     fn test_list_empty_file() {
         let file = create_test_file_with_content("");
@@ -276,6 +302,7 @@ mod list_tests {
 mod review_tests {
     use std::collections::HashSet;
 
+    /// Tests that prioritized items maintain their relative order during review
     #[test]
     fn test_review_prioritization_order() {
         // Test that items prioritized during review maintain their relative order
@@ -323,6 +350,7 @@ mod review_tests {
         assert_eq!(new_lines, expected);
     }
 
+    /// Tests that quitting review still saves any changes made
     #[test]
     fn test_review_quit_saves_changes() {
         // Test that quitting review still saves any changes made
@@ -364,6 +392,7 @@ mod review_tests {
         assert_eq!(new_lines, expected);
     }
 
+    /// Tests that items are prioritized in exact command-line order
     #[test]
     fn test_prioritize_command_line_order() {
         // Test that items are prioritized in the exact order specified on command line
@@ -376,7 +405,7 @@ mod review_tests {
         ];
 
         // Command: arn up 5 2 4 (prioritize items 5, 2, 4 in that order)
-        let result = super::prioritize_items_in_content(&lines, &[5, 2, 4]);
+        let result = crate::content::prioritize_items_in_content(&lines, &[5, 2, 4]);
 
         assert!(result.is_ok());
         let (new_content, prioritized) = result.unwrap();
@@ -389,6 +418,7 @@ mod review_tests {
         assert_eq!(prioritized, expected_prioritized);
     }
 
+    /// Tests duplicate removal while preserving command-line order
     #[test]
     fn test_prioritize_command_line_order_with_duplicates() {
         // Test that duplicates are removed but order is preserved
@@ -399,7 +429,7 @@ mod review_tests {
         ];
 
         // Command: arn up 3 1 3 2 1 (should become 3, 1, 2)
-        let result = super::prioritize_items_in_content(&lines, &[3, 1, 3, 2, 1]);
+        let result = crate::content::prioritize_items_in_content(&lines, &[3, 1, 3, 2, 1]);
 
         assert!(result.is_ok());
         let (new_content, prioritized) = result.unwrap();
