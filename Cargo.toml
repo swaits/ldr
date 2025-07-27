@@ -1,10 +1,14 @@
 [package]
-name = "parts"
-version = "0.1.0"
+name = "ldr"
+version = "1.0.0"
 edition = "2021"
-description = "Prepend and Review ToDo System"
+description = "Log, Do, Review - A simple todo system"
 license = "MIT"
 authors = ["Stephen Waits <steve@waits.net>"]
+repository = "https://github.com/swaits/ldr"
+homepage = "https://github.com/swaits/ldr"
+keywords = ["todo", "cli", "productivity"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4.5.41", features = ["derive"] }

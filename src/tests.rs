@@ -1,4 +1,4 @@
-//! Comprehensive test suite for the parts todo system.
+//! Comprehensive test suite for the ldr todo system.
 //!
 //! Tests cover all core functionality including content manipulation,
 //! command operations, filtering, and edge cases.

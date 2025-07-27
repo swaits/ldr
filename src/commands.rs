@@ -1,4 +1,4 @@
-//! Command implementations for the parts todo system.
+//! Command implementations for the ldr todo system.
 //!
 //! This module contains all the core functionality for managing todo items,
 //! including adding, listing, prioritizing, archiving, and interactive review.
@@ -301,7 +301,7 @@ pub fn review_note(note_path: &Path, archive_path: &Path) -> io::Result<()> {
         print!("\x1B[2J\x1B[H");
 
         println!(
-            "{}=== PARTS Review Mode ==={}",
+            "{}=== LDR Review Mode ==={}",
             color::Fg(color::Cyan),
             color::Fg(color::Reset)
         );

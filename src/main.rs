@@ -1,4 +1,4 @@
-//! Parts - A Prepend and Review ToDo System
+//! LDR - Log, Do, Review
 //!
 //! A command-line todo application that emphasizes adding items to the top
 //! and provides an interactive review mode for processing items.
@@ -14,17 +14,17 @@ mod input;
 #[cfg(test)]
 mod tests;
 
-/// Command-line interface structure for the parts todo system
+/// Command-line interface structure for the ldr todo system
 #[derive(Parser)]
-#[command(name = "parts")]
-#[command(about = "Prepend and Review ToDo System", long_about = None)]
+#[command(name = "ldr")]
+#[command(about = "Log, Do, Review - A simple todo system", long_about = None)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-/// Available subcommands for the parts todo system
+/// Available subcommands for the ldr todo system
 #[derive(Subcommand)]
 enum Commands {
     /// Add a new item at the top
@@ -47,19 +47,19 @@ enum Commands {
     /// Raise the priority of items (move toward top)
     #[command(alias = "prioritize")]
     Up {
-        /// Item numbers to prioritize (from "parts ls")
+        /// Item numbers to prioritize (from "ldr ls")
         numbers: Vec<usize>,
     },
     /// Archive completed items
     #[command(aliases = ["done", "finish", "check"])]
     Do {
-        /// Item numbers to archive (from "parts ls")
+        /// Item numbers to archive (from "ldr ls")
         numbers: Vec<usize>,
     },
     /// Remove items without archiving
     #[command(aliases = ["remove", "delete", "destroy", "forget"])]
     Rm {
-        /// Item numbers to remove (from "parts ls")
+        /// Item numbers to remove (from "ldr ls")
         numbers: Vec<usize>,
     },
     /// Scan and review items interactively, from top to bottom
@@ -73,7 +73,7 @@ enum Commands {
 /// Sets up XDG-compliant data directory paths for note.txt and archive.txt files.
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
-    let base = BaseDirectories::with_prefix("parts");
+    let base = BaseDirectories::with_prefix("ldr");
     let note_path = base
         .place_data_file("note.txt")
         .expect("Failed to create data directory");
