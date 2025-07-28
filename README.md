@@ -42,11 +42,21 @@ mise use -g cargo:ldr
 ## Usage
 
 - `ldr add "Your todo item"` - Add a new item to the top
-- `ldr ls` - List your items
+- `ldr ls` - List the top 5 items (use `-n NUM` for different count, `-a` for all, or add filter text)
 - `ldr scan` - Review items interactively
 - `ldr do 1 2 3` - Archive completed items by number
 - `ldr up 1 2 3` - Prioritize items by moving them to the top
+- `ldr rm 1 2 3` - Remove items without archiving
 - `ldr edit` - Edit your todo list in $EDITOR
+
+### Command aliases
+
+- `add` can also be used as `prepend`
+- `ls` can also be used as `list`
+- `up` can also be used as `prioritize`
+- `do` can also be used as `done`, `finish`, or `check`
+- `rm` can also be used as `remove`, `delete`, `destroy`, or `forget`
+- `scan` can also be used as `review`
 
 ## License
 
