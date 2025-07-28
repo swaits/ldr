@@ -51,12 +51,13 @@ mise use -g cargo:ldr
 
 ### Command aliases
 
-- `add` can also be used as `prepend`
-- `ls` can also be used as `list`
-- `up` can also be used as `prioritize`
-- `do` can also be used as `done`, `finish`, or `check`
+- `add` can also be used as `a` or `prepend`
+- `ls` can also be used as `l` or `list`
+- `up` can also be used as `u` or `prioritize`
+- `do` can also be used as `d`, `done`, `finish`, or `check`
 - `rm` can also be used as `remove`, `delete`, `destroy`, or `forget`
-- `scan` can also be used as `review`
+- `scan` can also be used as `s`, `r`, or `review`
+- `edit` can also be used as `e`
 
 ## License
 

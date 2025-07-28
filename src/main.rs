@@ -28,13 +28,13 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Add a new item at the top
-    #[command(alias = "prepend")]
+    #[command(aliases = ["a", "prepend"])]
     Add {
         /// The text to add (e.g., "Read: Book XYZ")
         text: String,
     },
     /// List the top N items (default 5)
-    #[command(alias = "list")]
+    #[command(aliases = ["l", "list"])]
     Ls {
         #[arg(short = 'n', long = "num", default_value_t = 5)]
         num: usize,
@@ -45,13 +45,13 @@ enum Commands {
         filter: Option<String>,
     },
     /// Raise the priority of items (move toward top)
-    #[command(alias = "prioritize")]
+    #[command(aliases = ["u", "prioritize"])]
     Up {
         /// Item numbers to prioritize (from "ldr ls")
         numbers: Vec<usize>,
     },
     /// Archive completed items
-    #[command(aliases = ["done", "finish", "check"])]
+    #[command(aliases = ["d", "done", "finish", "check"])]
     Do {
         /// Item numbers to archive (from "ldr ls")
         numbers: Vec<usize>,
@@ -63,9 +63,10 @@ enum Commands {
         numbers: Vec<usize>,
     },
     /// Scan and review items interactively, from top to bottom
-    #[command(alias = "review")]
+    #[command(aliases = ["s", "r", "review"])]
     Scan,
     /// Edit items in your $EDITOR
+    #[command(alias = "e")]
     Edit,
 }
 
