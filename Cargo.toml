@@ -1,6 +1,6 @@
 [package]
 name = "ldr"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 description = "Log, Do, Review - A simple todo system"
 license = "MIT"

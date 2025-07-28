@@ -21,7 +21,7 @@ cargo install ldr
 ### Using mise
 
 ```bash
-mise use -g cargo:ldr
+mise use -g cargo:ldr@latest
 ```
 
 ### From source
