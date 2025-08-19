@@ -1,14 +1,13 @@
 //! Command implementations for the ldr todo system with Markdown support.
 //!
 //! This module contains all the core functionality for managing todo items,
-//! including adding, listing, prioritizing, archiving, and interactive review.
+//! including adding, listing, prioritizing, archiving, and editing.
 //! Now supports subtasks and multiple lists in Markdown format.
 
 use crate::markdown::{
     parse_todo_file, generate_todo_file, parse_archive_file, generate_archive_file,
     Task, TaskList, TodoFile, ArchiveFile, TaskRef
 };
-// use crate::input::read_key_input; // TODO: Implement full interactive review
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -559,50 +558,6 @@ pub fn remove_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
     result
 }
 
-/// Interactive review mode with subtask support
-pub fn review_note(todo_path: &Path, _archive_path: &Path) -> io::Result<()> {
-    if !todo_path.exists() {
-        println!("No notes to review.");
-        return Ok(());
-    }
-
-    let content = fs::read_to_string(todo_path)?;
-    let todo_file = parse_todo_file(&content)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-
-    let default_list = match todo_file.get_default_list() {
-        Some(list) => list,
-        None => {
-            println!("No Default list found.");
-            return Ok(());
-        }
-    };
-
-    if default_list.is_empty() {
-        println!("No notes to review.");
-        return Ok(());
-    }
-
-    // For now, implement a simplified review that works with whole tasks
-    // Full subtask-aware review would be a significant expansion
-    println!(
-        "{}=== LDR Review Mode ==={}",
-        color::Fg(color::Cyan),
-        color::Fg(color::Reset)
-    );
-    println!(
-        "{}Interactive review with subtasks not yet fully implemented.{}",
-        color::Fg(color::Yellow),
-        color::Fg(color::Reset)
-    );
-    println!(
-        "{}Use 'ldr edit' to manually edit todos.md for now.{}",
-        color::Fg(color::Yellow),
-        color::Fg(color::Reset)
-    );
-
-    Ok(())
-}
 
 /// Opens the todo file in the user's preferred editor
 pub fn edit_note(todo_path: &Path) -> io::Result<()> {

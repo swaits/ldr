@@ -70,9 +70,6 @@ enum Commands {
         /// Item references to remove (e.g., "1", "2a", "3b")
         refs: Vec<String>,
     },
-    /// Scan and review items interactively, from top to bottom
-    #[command(aliases = ["s", "r", "review"])]
-    Scan,
     /// Edit items in your $EDITOR
     #[command(alias = "e")]
     Edit,
@@ -116,7 +113,6 @@ fn main() -> io::Result<()> {
         Commands::Up { refs } => commands::prioritize_items(&todo_md_path, &refs),
         Commands::Do { refs } => commands::archive_items(&todo_md_path, &archive_md_path, &refs),
         Commands::Rm { refs } => commands::remove_items(&todo_md_path, &refs),
-        Commands::Scan => commands::review_note(&todo_md_path, &archive_md_path),
         Commands::Edit => commands::edit_note(&todo_md_path),
     }
 }
