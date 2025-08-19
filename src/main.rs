@@ -71,7 +71,7 @@ enum Commands {
         refs: Vec<String>,
     },
     /// Edit items in your $EDITOR
-    #[command(alias = "e")]
+    #[command(aliases = ["e", "s", "scan", "r", "review"])]
     Edit,
 }
 

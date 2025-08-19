@@ -641,6 +641,28 @@ mod edit_functionality {
         assert!(todos.contains("# TODOs"));
         assert!(todos.contains("## Default"));
     }
+    
+    #[test]
+    fn test_edit_aliases() {
+        let env = TestEnv::new();
+        
+        // Test all aliases work by using echo to verify they're called
+        let aliases = vec!["edit", "e", "scan", "s", "review", "r"];
+        
+        for alias in aliases {
+            let result = Command::new(&env.binary_path)
+                .args(&[alias])
+                .env("XDG_DATA_HOME", &env.data_dir)
+                .env("EDITOR", "/bin/echo")
+                .output()
+                .expect(&format!("Failed to execute {} command", alias));
+                
+            // Should succeed and echo the file path
+            assert_eq!(result.status.code().unwrap_or(-1), 0);
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            assert!(stdout.contains("todos.md"), "Alias '{}' didn't work: {}", alias, stdout);
+        }
+    }
 }
 
 #[cfg(test)]
