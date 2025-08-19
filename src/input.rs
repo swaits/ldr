@@ -9,6 +9,7 @@ use termion::raw::IntoRawMode;
 /// Reads raw keyboard input including arrow keys and special characters.
 /// Handles ANSI escape sequences for arrow keys and returns string representations.
 /// Used for interactive navigation in review mode.
+#[allow(dead_code)]
 pub fn read_key_input() -> io::Result<String> {
     let _stdout = io::stdout().into_raw_mode()?;
     let mut buffer = [0; 3];

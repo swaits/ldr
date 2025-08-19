@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Core Design Principles
+- **Principle of Least Surprise**: All UI behaviors should be predictable and intuitive
+- **Dead Simple**: Complexity in storage, simplicity in interaction
+- **Progressive Disclosure**: Basic operations stay simple, advanced features are optional
+- **Backward Compatible**: Existing commands work unchanged on Default list
+
 ## Development Commands
 
 - **Build project**: `cargo build`
@@ -15,30 +21,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Architecture
 
-LDR is a Rust CLI productivity application implementing the "append-and-review" note system. The architecture follows a clean separation of concerns:
+LDR is a Rust CLI productivity application implementing the "append-and-review" note system with Markdown format and subtask support. The architecture follows a clean separation of concerns:
 
 ### Core Structure
-- **main.rs**: Entry point with CLI definition using `clap`. Handles XDG-compliant data directory setup (`~/.local/share/ldr/`) for `note.txt` and `archive.txt` files
-- **commands.rs**: Command implementations with terminal I/O, file operations, and colored output using `termion`
-- **content.rs**: Pure functions for content manipulation without side effects - handles all core logic for text processing
-- **input.rs**: Raw keyboard input handling for interactive review mode, processes ANSI escape sequences for arrow keys
+- **main.rs**: Entry point with CLI definition using `clap`. Handles XDG-compliant data directory setup (`~/.local/share/ldr/`) and automatic migration from plain text to Markdown format
+- **commands.rs**: Command implementations with terminal I/O, file operations, and colored output using `termion`. Handles subtask operations and task reference parsing (1, 2a, 3b format)
+- **markdown.rs**: Core data structures and parsing/generation for Markdown todo files. Supports single-level nesting (tasks with subtasks) and multiple named lists
+- **migration.rs**: One-time migration utilities for converting plain text files to Markdown format with Default list structure
+- **content.rs**: Legacy compatibility functions maintained for existing tests
+- **input.rs**: Raw keyboard input handling for interactive review mode (currently simplified)
+
+### File Format
+- **todos.md**: Markdown file with multiple lists (Default list is primary)
+- **archive.md**: Markdown archive with date-based sections and list organization
+- **Migration**: Automatic one-time conversion from `note.txt`/`archive.txt` to Markdown format
+
+### Task System
+- **Task References**: Number+letter format (1, 2a, 3b) for referencing tasks and subtasks
+- **Single-Level Nesting**: Tasks can have subtasks, but subtasks cannot have sub-subtasks
+- **Default List**: Primary list for backward compatibility - all existing commands work on Default
+- **Multiple Lists**: Support for named lists (Work, Personal, etc.) with `--list` flag
 
 ### Key Design Patterns
-- **Separation of pure functions**: Core logic in `content.rs` is stateless and easily testable
-- **XDG compliance**: Uses `xdg` crate for proper data directory handling
-- **Terminal UI**: Interactive review mode with keyboard navigation and colored output
-- **File-based storage**: Simple text files for persistence (`note.txt` for active items, `archive.txt` for completed)
+- **Markdown Storage**: Human-readable format with proper structure
+- **Flat Numbering**: Simple number+letter system for task references
+- **Backward Compatibility**: Existing interface unchanged, new features are additive
+- **XDG Compliance**: Uses `xdg` crate for proper data directory handling
+- **Migration on First Run**: Seamless upgrade from old format with backups
 
 ### Data Flow
 1. CLI parsing extracts subcommands and arguments
-2. XDG directories are resolved for data files
-3. Commands delegate to pure functions in `content.rs` for logic
-4. File I/O operations handle persistence
-5. Terminal output provides user feedback with colors
+2. Migration check and execution if needed (first run only)
+3. XDG directories resolved for Markdown files (`todos.md`, `archive.md`)
+4. Commands parse task references and delegate to Markdown operations
+5. File I/O operations handle Markdown parsing/generation
+6. Terminal output provides user feedback with colors and proper formatting
 
-### Interactive Review Mode
-The `scan` command provides a sophisticated interactive interface:
-- Arrow key navigation with undo functionality
-- Real-time state management for prioritize/archive/skip actions
-- Full-screen terminal interface with progress tracking
-- History system supporting multi-level undo operations
+### Task Reference System
+- **1**: Task 1 and all its subtasks
+- **1a**: Only subtask 'a' of task 1
+- **2b**: Only subtask 'b' of task 2
+- Operations default to whole tasks, subtask references are specific

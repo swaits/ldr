@@ -10,6 +10,8 @@ use xdg::BaseDirectories;
 mod commands;
 mod content;
 mod input;
+mod markdown;
+mod migration;
 
 #[cfg(test)]
 mod tests;
@@ -32,6 +34,12 @@ enum Commands {
     Add {
         /// The text to add (e.g., "Read: Book XYZ")
         text: String,
+        /// Add as subtask under this task number (e.g., --under 3)
+        #[arg(long)]
+        under: Option<usize>,
+        /// Add to specific list instead of Default
+        #[arg(long)]
+        list: Option<String>,
     },
     /// List the top N items (default 5)
     #[command(aliases = ["l", "list"])]
@@ -47,20 +55,20 @@ enum Commands {
     /// Raise the priority of items (move toward top)
     #[command(aliases = ["u", "prioritize"])]
     Up {
-        /// Item numbers to prioritize (from "ldr ls")
-        numbers: Vec<usize>,
+        /// Item references to prioritize (e.g., "1", "2a", "3b")
+        refs: Vec<String>,
     },
     /// Archive completed items
     #[command(aliases = ["d", "done", "finish", "check"])]
     Do {
-        /// Item numbers to archive (from "ldr ls")
-        numbers: Vec<usize>,
+        /// Item references to archive (e.g., "1", "2a", "3b")
+        refs: Vec<String>,
     },
     /// Remove items without archiving
     #[command(aliases = ["remove", "delete", "destroy", "forget"])]
     Rm {
-        /// Item numbers to remove (from "ldr ls")
-        numbers: Vec<usize>,
+        /// Item references to remove (e.g., "1", "2a", "3b")
+        refs: Vec<String>,
     },
     /// Scan and review items interactively, from top to bottom
     #[command(aliases = ["s", "r", "review"])]
@@ -71,10 +79,12 @@ enum Commands {
 }
 
 /// Entry point that parses CLI arguments and dispatches to appropriate command handlers.
-/// Sets up XDG-compliant data directory paths for note.txt and archive.txt files.
+/// Sets up XDG-compliant data directory paths and handles migration from plain text format.
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
     let base = BaseDirectories::with_prefix("ldr");
+    
+    // Old plain text file paths
     let note_path = base
         .place_data_file("note.txt")
         .expect("Failed to create data directory");
@@ -82,15 +92,31 @@ fn main() -> io::Result<()> {
         .place_data_file("archive.txt")
         .expect("Failed to create data directory");
 
-    match cli.command {
-        Commands::Add { text } => commands::add_entry(&note_path, &text),
-        Commands::Ls { num, all, filter } => {
-            commands::list_note(&note_path, num, all, filter.as_deref())
+    // New Markdown file paths
+    let todo_md_path = base
+        .place_data_file("todos.md")
+        .expect("Failed to create data directory");
+    let archive_md_path = base
+        .place_data_file("archive.md")
+        .expect("Failed to create data directory");
+
+    // Check if migration is needed and perform it
+    if migration::needs_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path) {
+        if let Err(e) = migration::perform_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path) {
+            eprintln!("Migration failed: {}", e);
+            return Err(io::Error::other(e));
         }
-        Commands::Up { numbers } => commands::prioritize_items(&note_path, &numbers),
-        Commands::Do { numbers } => commands::archive_items(&note_path, &archive_path, &numbers),
-        Commands::Rm { numbers } => commands::remove_items(&note_path, &numbers),
-        Commands::Scan => commands::review_note(&note_path, &archive_path),
-        Commands::Edit => commands::edit_note(&note_path),
+    }
+
+    match cli.command {
+        Commands::Add { text, under, list } => commands::add_entry(&todo_md_path, &text, under, list.as_deref()),
+        Commands::Ls { num, all, filter } => {
+            commands::list_note(&todo_md_path, num, all, filter.as_deref())
+        }
+        Commands::Up { refs } => commands::prioritize_items(&todo_md_path, &refs),
+        Commands::Do { refs } => commands::archive_items(&todo_md_path, &archive_md_path, &refs),
+        Commands::Rm { refs } => commands::remove_items(&todo_md_path, &refs),
+        Commands::Scan => commands::review_note(&todo_md_path, &archive_md_path),
+        Commands::Edit => commands::edit_note(&todo_md_path),
     }
 }

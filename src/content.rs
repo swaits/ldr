@@ -1,19 +1,24 @@
-//! Pure functions for content manipulation.
+//! Pure functions for content manipulation (legacy compatibility).
 //!
-//! This module contains stateless functions that handle the core logic
-//! for manipulating todo item content without side effects.
+//! This module maintains backward compatibility with existing tests while
+//! the main functionality has moved to the markdown module for the new format.
 
 use std::collections::HashSet;
 
-/// Pure function that prepends new text to existing content.
-/// Adds the new text at the beginning followed by a newline and the trimmed existing content.
+/// Pure function that prepends new text to existing content (legacy format).
+/// This is maintained for backward compatibility with existing tests.
+#[allow(dead_code)]
 pub fn add_entry_to_content(existing_content: &str, text: &str) -> String {
-    format!("{}\n{}", text, existing_content.trim_end())
+    if existing_content.trim().is_empty() {
+        format!("{}\n", text)
+    } else {
+        format!("{}\n{}", text, existing_content.trim_end())
+    }
 }
 
-/// Pure function that moves specified lines to the top of the content.
-/// Takes 1-based line numbers, validates them, removes duplicates, and reorders content.
-/// Returns the new content string and a vector of the prioritized items.
+/// Pure function that moves specified lines to the top of the content (legacy format).
+/// This is maintained for backward compatibility with existing tests.
+#[allow(dead_code)]
 pub fn prioritize_items_in_content(
     lines: &[String],
     numbers: &[usize],
@@ -64,9 +69,9 @@ pub fn prioritize_items_in_content(
     Ok((new_content, to_prioritize))
 }
 
-/// Pure function that removes specified lines from content.
-/// Takes 1-based line numbers, validates them, and returns remaining content.
-/// Returns the new content string and a vector of the archived items.
+/// Pure function that removes specified lines from content (legacy format).
+/// This is maintained for backward compatibility with existing tests.
+#[allow(dead_code)]
 pub fn archive_items_in_content(
     lines: &[String],
     numbers: &[usize],
