@@ -15,6 +15,152 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 use termion::color;
+use std::fmt;
+
+// Custom 256-color support
+struct Color256(u8);
+
+impl fmt::Display for Color256 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\x1b[38;5;{}m", self.0)
+    }
+}
+
+// HSV to RGB conversion
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let h = h / 60.0;
+    let c = v * s;
+    let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
+    let m = v - c;
+    
+    let (r, g, b) = if h >= 0.0 && h < 1.0 {
+        (c, x, 0.0)
+    } else if h >= 1.0 && h < 2.0 {
+        (x, c, 0.0)
+    } else if h >= 2.0 && h < 3.0 {
+        (0.0, c, x)
+    } else if h >= 3.0 && h < 4.0 {
+        (0.0, x, c)
+    } else if h >= 4.0 && h < 5.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    
+    (
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
+}
+
+// Convert RGB to closest 256-color palette index
+fn rgb_to_256_color(r: u8, g: u8, b: u8) -> u8 {
+    // For colors 16-231: 6x6x6 color cube
+    // Each component ranges from 0-5, mapped from 0-255
+    let r_index = if r < 48 { 0 } else if r < 115 { 1 } else { (r - 55) / 40 };
+    let g_index = if g < 48 { 0 } else if g < 115 { 1 } else { (g - 55) / 40 };
+    let b_index = if b < 48 { 0 } else if b < 115 { 1 } else { (b - 55) / 40 };
+    
+    16 + 36 * r_index + 6 * g_index + b_index
+}
+
+// Generate color from HSV values
+fn hsv_color(h: f32, s: f32, v: f32) -> Color256 {
+    let (r, g, b) = hsv_to_rgb(h, s, v);
+    Color256(rgb_to_256_color(r, g, b))
+}
+
+// Color scheme configuration
+struct ColorScheme {
+    // Main task colors (bright, high saturation)
+    task1_hue: f32,  // Primary hue for odd tasks
+    task2_hue: f32,  // Primary hue for even tasks
+    main_saturation: f32,
+    main_value: f32,
+    
+    // Subtask adjustments
+    value_reduction: f32, // Amount to reduce brightness for subtasks
+}
+
+impl ColorScheme {
+    fn new() -> Self {
+        if Self::is_dark_terminal() {
+            // Dark terminal scheme - bright colors
+            ColorScheme {
+                task1_hue: 200.0,    // Light cyan-blue
+                task2_hue: 40.0,     // Light desert tan/gold 
+                main_saturation: 0.7,
+                main_value: 0.95,    // Very bright
+                value_reduction: 0.2,
+            }
+        } else {
+            // Light terminal scheme - darker colors
+            ColorScheme {
+                task1_hue: 210.0,    // Darker blue
+                task2_hue: 30.0,     // Darker orange
+                main_saturation: 0.8,
+                main_value: 0.6,     // Much darker for light backgrounds
+                value_reduction: 0.15,
+            }
+        }
+    }
+    
+    fn is_dark_terminal() -> bool {
+        // Check various indicators for dark terminal
+        
+        // Check COLORFGBG environment variable (format: "15;0" means white fg, black bg)
+        if let Ok(colorfgbg) = std::env::var("COLORFGBG") {
+            if let Some(bg) = colorfgbg.split(';').nth(1) {
+                if let Ok(bg_color) = bg.parse::<u8>() {
+                    // Background colors 0-7 are typically dark
+                    return bg_color < 8;
+                }
+            }
+        }
+        
+        // Check for common dark terminal themes in environment
+        if let Ok(term) = std::env::var("TERM") {
+            if term.contains("dark") {
+                return true;
+            }
+        }
+        
+        // Check common terminal emulators that default to dark
+        if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+            match term_program.as_str() {
+                "iTerm.app" | "WezTerm" | "Alacritty" | "ghostty" => return true,
+                _ => {}
+            }
+        }
+        
+        // Default to dark terminal (most developers use dark themes)
+        true
+    }
+    
+    fn get_main_task_color(&self, task_num: usize) -> Color256 {
+        let hue = if task_num % 2 == 1 {
+            self.task1_hue
+        } else {
+            self.task2_hue
+        };
+        hsv_color(hue, self.main_saturation, self.main_value)
+    }
+    
+    fn get_subtask_color(&self, task_num: usize, _subtask_idx: usize) -> Color256 {
+        let base_hue = if task_num % 2 == 1 {
+            self.task1_hue
+        } else {
+            self.task2_hue
+        };
+        
+        // Simply inherit parent color but reduce saturation and value
+        let reduced_saturation = self.main_saturation - 0.15; // Reduce saturation by 15%
+        let reduced_value = self.main_value - self.value_reduction;
+        
+        hsv_color(base_hue, reduced_saturation, reduced_value)
+    }
+}
 
 /// Adds a new entry to the todo file.
 /// Creates the file if it doesn't exist, otherwise prepends to Default list or specified list.
@@ -112,13 +258,13 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
     // Build flat list of items for filtering and display
     let mut display_items = Vec::new();
     for (task_idx, task) in default_list.tasks.iter().enumerate() {
-        let task_line = format!("{}. {}", task_idx + 1, task.text);
+        let task_line = format!("{:3}. {}", task_idx + 1, task.text);
         display_items.push((task_idx + 1, None, task_line.clone()));
 
         // Add subtasks if any
         for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
             let letter = (b'a' + subtask_idx as u8) as char;
-            let subtask_line = format!("   {}{}. {}", task_idx + 1, letter, subtask);
+            let subtask_line = format!("     {}. {}", letter, subtask);
             display_items.push((task_idx + 1, Some(subtask_idx), subtask_line));
         }
     }
@@ -157,20 +303,24 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
         num.min(filtered_items.len())
     };
 
-    for (_task_num, subtask_idx, line) in filtered_items.iter().take(display_count) {
+    let color_scheme = ColorScheme::new();
+    
+    for (task_num, subtask_idx, line) in filtered_items.iter().take(display_count) {
         if subtask_idx.is_none() {
-            // Main task - blue number
+            // Main task - use HSV-based bright colors
+            let color = color_scheme.get_main_task_color(*task_num);
             println!(
                 "{}{}{}",
-                color::Fg(color::Blue),
+                color,
                 line,
                 color::Fg(color::Reset)
             );
         } else {
-            // Subtask - dimmed
+            // Subtask - use same color family as parent but dimmer
+            let color = color_scheme.get_subtask_color(*task_num, subtask_idx.unwrap());
             println!(
                 "{}{}{}",
-                color::Fg(color::LightBlack),
+                color,
                 line,
                 color::Fg(color::Reset)
             );
