@@ -3,7 +3,7 @@
 //! This module handles the one-time conversion from the old plain text format
 //! to the new Markdown format with Default list structure.
 
-use crate::markdown::{Task, TaskList, TodoFile, ArchiveFile};
+use crate::markdown::{Task, TodoFile, ArchiveFile};
 use std::fs;
 use std::path::Path;
 
@@ -25,18 +25,16 @@ pub fn migrate_note_file(note_path: &Path) -> Result<TodoFile, String> {
         .map_err(|e| format!("Failed to read note file: {}", e))?;
 
     let mut todo_file = TodoFile::new("TODOs".to_string());
-    let mut default_list = TaskList::new("Default".to_string());
 
     // Split content into lines and create tasks
     for line in content.lines() {
         let trimmed = line.trim();
         if !trimmed.is_empty() {
             let task = Task::new(trimmed.to_string());
-            default_list.add_task(task);
+            todo_file.add_task(task);
         }
     }
 
-    todo_file.add_list(default_list);
     Ok(todo_file)
 }
 
@@ -68,11 +66,9 @@ pub fn migrate_archive_file(archive_path: &Path) -> Result<ArchiveFile, String> 
     Ok(archive_file)
 }
 
-/// Create an empty todo file with just a Default list
+/// Create an empty todo file
 pub fn create_empty_todo_file() -> TodoFile {
-    let mut todo_file = TodoFile::new("TODOs".to_string());
-    todo_file.add_list(TaskList::new("Default".to_string()));
-    todo_file
+    TodoFile::new("TODOs".to_string())
 }
 
 /// Create backup files before migration
@@ -121,7 +117,7 @@ pub fn perform_migration(
         .map_err(|e| format!("Failed to write archive.md: {}", e))?;
 
     // Count migrated items
-    let todo_count = todo_file.get_default_list().map(|l| l.task_count()).unwrap_or(0);
+    let todo_count = todo_file.task_count();
     let archive_count = archive_file.entries.first()
         .and_then(|e| e.lists.get("Default"))
         .map(|tasks| tasks.len())
@@ -157,11 +153,10 @@ mod tests {
         let result = migrate_note_file(file.path()).unwrap();
         
         assert_eq!(result.title, "TODOs");
-        let default_list = result.get_list("Default").unwrap();
-        assert_eq!(default_list.tasks.len(), 3);
-        assert_eq!(default_list.tasks[0].text, "First task");
-        assert_eq!(default_list.tasks[1].text, "Second task");
-        assert_eq!(default_list.tasks[2].text, "Third task");
+        assert_eq!(result.tasks.len(), 3);
+        assert_eq!(result.tasks[0].text, "First task");
+        assert_eq!(result.tasks[1].text, "Second task");
+        assert_eq!(result.tasks[2].text, "Third task");
     }
 
     #[test]
@@ -170,8 +165,7 @@ mod tests {
         let result = migrate_note_file(file.path()).unwrap();
         
         assert_eq!(result.title, "TODOs");
-        let default_list = result.get_list("Default").unwrap();
-        assert_eq!(default_list.tasks.len(), 0);
+        assert_eq!(result.tasks.len(), 0);
     }
 
     #[test]
@@ -197,7 +191,7 @@ mod tests {
         let nonexistent = temp_dir.path().join("nonexistent.txt");
         
         let todo_result = migrate_note_file(&nonexistent).unwrap();
-        assert!(todo_result.get_list("Default").unwrap().is_empty());
+        assert!(todo_result.is_empty());
         
         let archive_result = migrate_archive_file(&nonexistent).unwrap();
         assert!(archive_result.entries.is_empty());

@@ -40,17 +40,17 @@ impl Task {
     }
 }
 
-/// Represents a named list of tasks
+/// Represents the entire todo file with a single task list
 #[derive(Debug, Clone, PartialEq)]
-pub struct TaskList {
-    pub name: String,
+pub struct TodoFile {
+    pub title: String,
     pub tasks: Vec<Task>,
 }
 
-impl TaskList {
-    pub fn new(name: String) -> Self {
-        TaskList {
-            name,
+impl TodoFile {
+    pub fn new(title: String) -> Self {
+        TodoFile {
+            title,
             tasks: Vec::new(),
         }
     }
@@ -69,56 +69,6 @@ impl TaskList {
 
     pub fn task_count(&self) -> usize {
         self.tasks.len()
-    }
-
-    #[allow(dead_code)]
-    pub fn total_item_count(&self) -> usize {
-        self.tasks
-            .iter()
-            .map(|t| 1 + t.subtask_count())
-            .sum()
-    }
-}
-
-/// Represents the entire todo file with multiple lists
-#[derive(Debug, Clone, PartialEq)]
-pub struct TodoFile {
-    pub title: String,
-    pub lists: Vec<TaskList>,
-}
-
-impl TodoFile {
-    pub fn new(title: String) -> Self {
-        TodoFile {
-            title,
-            lists: Vec::new(),
-        }
-    }
-
-    pub fn add_list(&mut self, list: TaskList) {
-        self.lists.push(list);
-    }
-
-    pub fn get_default_list_mut(&mut self) -> Option<&mut TaskList> {
-        self.lists.iter_mut().find(|list| list.name == "Default")
-    }
-
-    pub fn get_default_list(&self) -> Option<&TaskList> {
-        self.lists.iter().find(|list| list.name == "Default")
-    }
-
-    pub fn get_list_mut(&mut self, name: &str) -> Option<&mut TaskList> {
-        self.lists.iter_mut().find(|list| list.name == name)
-    }
-
-    pub fn get_list(&self, name: &str) -> Option<&TaskList> {
-        self.lists.iter().find(|list| list.name == name)
-    }
-
-    pub fn ensure_default_list(&mut self) {
-        if self.get_default_list().is_none() {
-            self.lists.insert(0, TaskList::new("Default".to_string()));
-        }
     }
 }
 
@@ -185,7 +135,6 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
     }
 
     let mut todo_file = TodoFile::new("TODOs".to_string());
-    let mut current_list: Option<TaskList> = None;
     let mut current_task: Option<Task> = None;
 
     for line in lines.iter() {
@@ -203,28 +152,9 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
             let title = &trimmed[1..];
             todo_file.title = title.trim().to_string();
         }
-        // Handle list headers - be flexible with spacing 
-        else if let Some(list_name) = trimmed.strip_prefix("## ") {
-            // Save previous task if exists
-            if let (Some(mut list), Some(task)) = (current_list.take(), current_task.take()) {
-                list.add_task(task);
-                todo_file.add_list(list);
-            } else if let Some(list) = current_list.take() {
-                todo_file.add_list(list);
-            }
-
-            current_list = Some(TaskList::new(list_name.trim().to_string()));
-        } else if trimmed.starts_with("##") && !trimmed.starts_with("###") {
-            // Handle cases where user might not have space after ## (but not ###)
-            let list_name = &trimmed[2..];
-            if let (Some(mut list), Some(task)) = (current_list.take(), current_task.take()) {
-                list.add_task(task);
-                todo_file.add_list(list);
-            } else if let Some(list) = current_list.take() {
-                todo_file.add_list(list);
-            }
-
-            current_list = Some(TaskList::new(list_name.trim().to_string()));
+        // Skip any list headers - we ignore them now since we don't support multiple lists
+        else if trimmed.starts_with("##") {
+            continue;
         }
         // Handle subtasks - be flexible with indentation (2, 3, or 4 spaces, or tab)
         else if let Some(subtask_text) = line.strip_prefix("  - ") {
@@ -232,82 +162,49 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
                 // If no current task, treat as main task (user error but be forgiving)
-                if current_list.is_none() {
-                    current_list = Some(TaskList::new("Default".to_string()));
-                }
-                if let Some(ref mut list) = current_list {
-                    list.add_task(Task::new(subtask_text.trim().to_string()));
-                }
+                current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         } else if let Some(subtask_text) = line.strip_prefix("   - ") {
             // Handle 3-space indentation
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
-                if current_list.is_none() {
-                    current_list = Some(TaskList::new("Default".to_string()));
-                }
-                if let Some(ref mut list) = current_list {
-                    list.add_task(Task::new(subtask_text.trim().to_string()));
-                }
+                current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         } else if let Some(subtask_text) = line.strip_prefix("    - ") {
             // Handle 4-space indentation (but not deeper nesting)
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
-                if current_list.is_none() {
-                    current_list = Some(TaskList::new("Default".to_string()));
-                }
-                if let Some(ref mut list) = current_list {
-                    list.add_task(Task::new(subtask_text.trim().to_string()));
-                }
+                current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         } else if let Some(subtask_text) = line.strip_prefix("\t- ") {
             // Handle tab indentation
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
-                if current_list.is_none() {
-                    current_list = Some(TaskList::new("Default".to_string()));
-                }
-                if let Some(ref mut list) = current_list {
-                    list.add_task(Task::new(subtask_text.trim().to_string()));
-                }
+                current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         }
         // Handle main tasks - flexible with spacing and different bullet styles
         else if let Some(task_text) = trimmed.strip_prefix("- ") {
             // Save previous task if exists
-            if let (Some(list), Some(task)) = (current_list.as_mut(), current_task.take()) {
-                list.add_task(task);
-            }
-
-            // Ensure we have a list
-            if current_list.is_none() {
-                current_list = Some(TaskList::new("Default".to_string()));
+            if let Some(task) = current_task.take() {
+                todo_file.add_task(task);
             }
 
             current_task = Some(Task::new(task_text.trim().to_string()));
         } else if let Some(task_text) = trimmed.strip_prefix("* ") {
             // Handle asterisk bullet points
-            if let (Some(list), Some(task)) = (current_list.as_mut(), current_task.take()) {
-                list.add_task(task);
-            }
-
-            if current_list.is_none() {
-                current_list = Some(TaskList::new("Default".to_string()));
+            if let Some(task) = current_task.take() {
+                todo_file.add_task(task);
             }
 
             current_task = Some(Task::new(task_text.trim().to_string()));
         } else if let Some(task_text) = trimmed.strip_prefix("+ ") {
             // Handle plus bullet points  
-            if let (Some(list), Some(task)) = (current_list.as_mut(), current_task.take()) {
-                list.add_task(task);
-            }
-
-            if current_list.is_none() {
-                current_list = Some(TaskList::new("Default".to_string()));
+            if let Some(task) = current_task.take() {
+                todo_file.add_task(task);
             }
 
             current_task = Some(Task::new(task_text.trim().to_string()));
@@ -322,13 +219,8 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
             // If it looks like it might be a task without proper formatting, treat it as one
             if !trimmed.starts_with('#') && !trimmed.starts_with('<') && !trimmed.contains("```") {
                 // Save previous task if exists
-                if let (Some(list), Some(task)) = (current_list.as_mut(), current_task.take()) {
-                    list.add_task(task);
-                }
-
-                // Ensure we have a list
-                if current_list.is_none() {
-                    current_list = Some(TaskList::new("Default".to_string()));
+                if let Some(task) = current_task.take() {
+                    todo_file.add_task(task);
                 }
 
                 current_task = Some(Task::new(trimmed.to_string()));
@@ -337,16 +229,10 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
         }
     }
 
-    // Save final task and list
-    if let Some(mut list) = current_list {
-        if let Some(task) = current_task {
-            list.add_task(task);
-        }
-        todo_file.add_list(list);
+    // Save final task
+    if let Some(task) = current_task {
+        todo_file.add_task(task);
     }
-
-    // Ensure there's always a Default list
-    todo_file.ensure_default_list();
 
     Ok(todo_file)
 }
@@ -356,19 +242,14 @@ pub fn generate_todo_file(todo_file: &TodoFile) -> String {
     let mut content = String::new();
     content.push_str(&format!("# {}\n\n", todo_file.title));
 
-    for list in &todo_file.lists {
-        content.push_str(&format!("## {}\n", list.name));
-
-        for task in &list.tasks {
-            content.push_str(&format!("- {}\n", task.text));
-            for subtask in &task.subtasks {
-                content.push_str(&format!("  - {}\n", subtask));
-            }
+    for task in &todo_file.tasks {
+        content.push_str(&format!("- {}\n", task.text));
+        for subtask in &task.subtasks {
+            content.push_str(&format!("  - {}\n", subtask));
         }
-        content.push('\n');
     }
 
-    content.trim_end().to_string() + "\n"
+    content
 }
 
 /// Parse an archive file with date-based sections
@@ -586,41 +467,33 @@ mod tests {
     fn test_parse_simple_todo_file() {
         let content = r#"# TODOs
 
-## Default
 - First task
 - Second task
   - Subtask A
   - Subtask B
-
-## Work
-- Work task
+- Third task
 "#;
 
         let todo_file = parse_todo_file(content).unwrap();
         assert_eq!(todo_file.title, "TODOs");
-        assert_eq!(todo_file.lists.len(), 2);
-
-        let default_list = todo_file.get_list("Default").unwrap();
-        assert_eq!(default_list.tasks.len(), 2);
-        assert_eq!(default_list.tasks[1].subtasks.len(), 2);
+        assert_eq!(todo_file.tasks.len(), 3);
+        assert_eq!(todo_file.tasks[1].subtasks.len(), 2);
+        assert_eq!(todo_file.tasks[1].subtasks[0], "Subtask A");
+        assert_eq!(todo_file.tasks[1].subtasks[1], "Subtask B");
     }
 
     #[test]
     fn test_generate_todo_file() {
         let mut todo_file = TodoFile::new("TODOs".to_string());
-        let mut default_list = TaskList::new("Default".to_string());
         
         let mut task = Task::new("Task with subtasks".to_string());
         task.add_subtask("Subtask 1".to_string());
         task.add_subtask("Subtask 2".to_string());
-        default_list.add_task(task);
-        
-        todo_file.add_list(default_list);
+        todo_file.add_task(task);
 
         let generated = generate_todo_file(&todo_file);
         let expected = r#"# TODOs
 
-## Default
 - Task with subtasks
   - Subtask 1
   - Subtask 2
@@ -632,7 +505,6 @@ mod tests {
     fn test_handle_deep_nesting_gracefully() {
         let content = r#"# TODOs
 
-## Default
 - Task
   - Subtask
     - Deep subtask
@@ -640,21 +512,19 @@ mod tests {
 
         // Resilient parser should ignore deep nesting rather than error
         let todo_file = parse_todo_file(content).unwrap();
-        let default_list = todo_file.get_list("Default").unwrap();
         // The resilient parser treats 4 spaces as valid subtask indentation
         // So "Deep subtask" becomes a subtask rather than being ignored
-        assert_eq!(default_list.tasks.len(), 1);
-        assert_eq!(default_list.tasks[0].text, "Task");
-        assert_eq!(default_list.tasks[0].subtasks.len(), 2);
-        assert_eq!(default_list.tasks[0].subtasks[0], "Subtask");
-        assert_eq!(default_list.tasks[0].subtasks[1], "Deep subtask");
+        assert_eq!(todo_file.tasks.len(), 1);
+        assert_eq!(todo_file.tasks[0].text, "Task");
+        assert_eq!(todo_file.tasks[0].subtasks.len(), 2);
+        assert_eq!(todo_file.tasks[0].subtasks[0], "Subtask");
+        assert_eq!(todo_file.tasks[0].subtasks[1], "Deep subtask");
     }
 
     #[test]
     fn test_resilient_parsing_various_formats() {
         let content = r#"# TODOs
 
-##Default
 - Task with dash
 * Task with asterisk
 + Task with plus
@@ -663,7 +533,6 @@ mod tests {
     - Subtask with 4 spaces
 	- Subtask with tab
 
-## Work
 Plain text task without bullet
 - Normal task
 
@@ -676,25 +545,25 @@ This is a code block
         let todo_file = parse_todo_file(content).unwrap();
         assert_eq!(todo_file.title, "TODOs");
         
-        let default_list = todo_file.get_list("Default").unwrap();
-        assert_eq!(default_list.tasks.len(), 3); // 3 bullet tasks (all subtasks go under plus task)
+        // Now all tasks are in the single task list
+        assert_eq!(todo_file.tasks.len(), 6); // All tasks are top-level now (including code block content)
         
         // First task (dash) has no subtasks
-        assert_eq!(default_list.tasks[0].text, "Task with dash");
-        assert_eq!(default_list.tasks[0].subtasks.len(), 0);
+        assert_eq!(todo_file.tasks[0].text, "Task with dash");
+        assert_eq!(todo_file.tasks[0].subtasks.len(), 0);
         
         // Second task (asterisk) has no subtasks  
-        assert_eq!(default_list.tasks[1].text, "Task with asterisk");
-        assert_eq!(default_list.tasks[1].subtasks.len(), 0);
+        assert_eq!(todo_file.tasks[1].text, "Task with asterisk");
+        assert_eq!(todo_file.tasks[1].subtasks.len(), 0);
         
         // Third task (plus) has all the subtasks (different indentation styles)
-        assert_eq!(default_list.tasks[2].text, "Task with plus");
-        assert_eq!(default_list.tasks[2].subtasks.len(), 4);
+        assert_eq!(todo_file.tasks[2].text, "Task with plus");
+        assert_eq!(todo_file.tasks[2].subtasks.len(), 4);
         
-        let work_list = todo_file.get_list("Work").unwrap();
-        assert_eq!(work_list.tasks.len(), 3); // Plain text + normal task + code block content
-        assert_eq!(work_list.tasks[0].text, "Plain text task without bullet");
-        assert_eq!(work_list.tasks[1].text, "Normal task");
-        // Comments are ignored, but code block content might be parsed as task
+        // Plain text task and normal task
+        assert_eq!(todo_file.tasks[3].text, "Plain text task without bullet");
+        assert_eq!(todo_file.tasks[4].text, "Normal task");
+        assert_eq!(todo_file.tasks[5].text, "This is a code block");
+        // Comments are ignored but code block content is parsed
     }
 }

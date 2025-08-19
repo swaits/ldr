@@ -37,9 +37,6 @@ enum Commands {
         /// Add as subtask under this task number (e.g., --under 3)
         #[arg(long)]
         under: Option<usize>,
-        /// Add to specific list instead of Default
-        #[arg(long)]
-        list: Option<String>,
     },
     /// List the top N items (default 5)
     #[command(aliases = ["l", "list"])]
@@ -106,7 +103,7 @@ fn main() -> io::Result<()> {
     }
 
     match cli.command {
-        Commands::Add { text, under, list } => commands::add_entry(&todo_md_path, &text, under, list.as_deref()),
+        Commands::Add { text, under } => commands::add_entry(&todo_md_path, &text, under),
         Commands::Ls { num, all, filter } => {
             commands::list_note(&todo_md_path, num, all, filter.as_deref())
         }

@@ -250,7 +250,7 @@ mod list_tests {
 
     /// Helper function to create Markdown todo files for new tests
     fn create_markdown_test_file(tasks: &[&str]) -> NamedTempFile {
-        let mut content = String::from("# TODOs\n\n## Default\n");
+        let mut content = String::from("# TODOs\n\n");
         for task in tasks {
             content.push_str(&format!("- {}\n", task));
         }
@@ -475,7 +475,7 @@ mod remove_tests {
 
     /// Helper function to create Markdown todo files for new tests
     fn create_markdown_test_file(tasks: &[&str]) -> NamedTempFile {
-        let mut content = String::from("# TODOs\n\n## Default\n");
+        let mut content = String::from("# TODOs\n\n");
         for task in tasks {
             content.push_str(&format!("- {}\n", task));
         }
@@ -487,7 +487,7 @@ mod remove_tests {
 
     /// Helper function to create Markdown todo files with subtasks
     fn create_markdown_test_file_with_subtasks(tasks_with_subtasks: &[(&str, &[&str])]) -> NamedTempFile {
-        let mut content = String::from("# TODOs\n\n## Default\n");
+        let mut content = String::from("# TODOs\n\n");
         for (task, subtasks) in tasks_with_subtasks {
             content.push_str(&format!("- {}\n", task));
             for subtask in *subtasks {
@@ -512,7 +512,7 @@ mod remove_tests {
 
         // Verify the item was removed from the file
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n- First item\n- Third item\n";
+        let expected_content = "# TODOs\n\n- First item\n- Third item\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -528,7 +528,7 @@ mod remove_tests {
 
         // Verify the items were removed from the file
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n- Second item\n- Fourth item\n";
+        let expected_content = "# TODOs\n\n- Second item\n- Fourth item\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -542,9 +542,9 @@ mod remove_tests {
         });
         assert!(result.is_ok());
 
-        // Verify the file has only empty Default list
+        // Verify the file has only the header
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n";
+        let expected_content = "# TODOs\n\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -576,7 +576,7 @@ mod remove_tests {
 
         // Verify only unique items were removed
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n- Third item\n";
+        let expected_content = "# TODOs\n\n- Third item\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -605,9 +605,9 @@ mod remove_tests {
         });
         assert!(result.is_ok());
 
-        // Verify the file remains with empty Default list
+        // Verify the file remains with just the header
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n";
+        let expected_content = "# TODOs\n\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -628,7 +628,7 @@ mod remove_tests {
 
         // Verify the item was removed from the original file
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n- Second item\n";
+        let expected_content = "# TODOs\n\n- Second item\n";
         assert_eq!(updated_content, expected_content);
     }
 
@@ -652,7 +652,7 @@ mod remove_tests {
 
         // Verify Task B was auto-completed and removed from todo file
         let updated_content = std::fs::read_to_string(file.path()).unwrap();
-        let expected_content = "# TODOs\n\n## Default\n- Task A\n- Task C\n  - Another subtask\n";
+        let expected_content = "# TODOs\n\n- Task A\n- Task C\n  - Another subtask\n";
         assert_eq!(updated_content, expected_content);
 
         // Verify both subtasks AND the parent task are in the archive

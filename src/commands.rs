@@ -6,7 +6,7 @@
 
 use crate::markdown::{
     parse_todo_file, generate_todo_file, parse_archive_file, generate_archive_file,
-    Task, TaskList, TodoFile, ArchiveFile, TaskRef
+    Task, TodoFile, ArchiveFile, TaskRef
 };
 use std::collections::HashSet;
 use std::env;
@@ -163,37 +163,26 @@ impl ColorScheme {
 }
 
 /// Adds a new entry to the todo file.
-/// Creates the file if it doesn't exist, otherwise prepends to Default list or specified list.
+/// Creates the file if it doesn't exist, otherwise prepends to the main list.
 /// Can add as subtask if `under` is specified.
-pub fn add_entry(path: &Path, text: &str, under: Option<usize>, list_name: Option<&str>) -> io::Result<()> {
+pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> io::Result<()> {
     let mut todo_file = if path.exists() {
         let content = fs::read_to_string(path)?;
         parse_todo_file(&content).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
     } else {
-        let mut file = TodoFile::new("TODOs".to_string());
-        file.add_list(TaskList::new("Default".to_string()));
-        file
+        TodoFile::new("TODOs".to_string())
     };
-
-    let target_list_name = list_name.unwrap_or("Default");
-    
-    // Ensure the target list exists
-    if todo_file.get_list(target_list_name).is_none() {
-        todo_file.add_list(TaskList::new(target_list_name.to_string()));
-    }
-
-    let target_list = todo_file.get_list_mut(target_list_name).unwrap();
 
     if let Some(task_num) = under {
         // Add as subtask
-        if task_num == 0 || task_num > target_list.tasks.len() {
+        if task_num == 0 || task_num > todo_file.tasks.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Invalid task number: {}. Valid range: 1-{}", task_num, target_list.tasks.len())
+                format!("Invalid task number: {}. Valid range: 1-{}", task_num, todo_file.tasks.len())
             ));
         }
         
-        target_list.tasks[task_num - 1].add_subtask(text.to_string());
+        todo_file.tasks[task_num - 1].add_subtask(text.to_string());
         println!(
             "{}✓ Added subtask to task {}: {}{}",
             color::Fg(color::Green),
@@ -204,11 +193,10 @@ pub fn add_entry(path: &Path, text: &str, under: Option<usize>, list_name: Optio
     } else {
         // Add as new main task at top
         let task = Task::new(text.to_string());
-        target_list.prepend_task(task);
+        todo_file.prepend_task(task);
         println!(
-            "{}✓ Added to {}: {}{}",
+            "{}✓ Added: {}{}",
             color::Fg(color::Green),
-            target_list_name,
             text,
             color::Fg(color::Reset)
         );
@@ -218,7 +206,7 @@ pub fn add_entry(path: &Path, text: &str, under: Option<usize>, list_name: Optio
     fs::write(path, content)
 }
 
-/// Lists tasks from the Default list with numbered display including subtasks.
+/// Lists tasks with numbered display including subtasks.
 /// Displays task numbers and subtask letters, supports filtering.
 pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io::Result<()> {
     if !path.exists() {
@@ -234,19 +222,7 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
     let todo_file = parse_todo_file(&content)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let default_list = match todo_file.get_default_list() {
-        Some(list) => list,
-        None => {
-            println!(
-                "{}No Default list found.{}",
-                color::Fg(color::Yellow),
-                color::Fg(color::Reset)
-            );
-            return Ok(());
-        }
-    };
-
-    if default_list.is_empty() {
+    if todo_file.is_empty() {
         println!(
             "{}No notes yet.{}",
             color::Fg(color::Yellow),
@@ -255,31 +231,66 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
         return Ok(());
     }
 
-    // Build flat list of items for filtering and display
-    let mut display_items = Vec::new();
-    for (task_idx, task) in default_list.tasks.iter().enumerate() {
-        let task_line = format!("{:3}. {}", task_idx + 1, task.text);
-        display_items.push((task_idx + 1, None, task_line.clone()));
-
-        // Add subtasks if any
-        for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
-            let letter = (b'a' + subtask_idx as u8) as char;
-            let subtask_line = format!("     {}. {}", letter, subtask);
-            display_items.push((task_idx + 1, Some(subtask_idx), subtask_line));
+    // Build list of items for filtering and display
+    let display_items: Vec<_> = if let Some(filter_text) = filter {
+        let mut filtered = Vec::new();
+        let filter_lower = filter_text.to_lowercase();
+        
+        for (task_idx, task) in todo_file.tasks.iter().enumerate() {
+            let task_num = task_idx + 1;
+            let task_matches = task.text.to_lowercase().contains(&filter_lower);
+            
+            // Check which subtasks match
+            let mut matching_subtasks = Vec::new();
+            for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
+                if subtask.to_lowercase().contains(&filter_lower) {
+                    matching_subtasks.push(subtask_idx);
+                }
+            }
+            
+            if task_matches {
+                // If task matches, include task and ALL its subtasks
+                let task_line = format!("{:3}. {}", task_num, task.text);
+                filtered.push((task_num, None, task_line));
+                
+                for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
+                    let letter = (b'a' + subtask_idx as u8) as char;
+                    let subtask_line = format!("     {}. {}", letter, subtask);
+                    filtered.push((task_num, Some(subtask_idx), subtask_line));
+                }
+            } else if !matching_subtasks.is_empty() {
+                // If only subtasks match, include task and only matching subtasks
+                let task_line = format!("{:3}. {}", task_num, task.text);
+                filtered.push((task_num, None, task_line));
+                
+                for &subtask_idx in &matching_subtasks {
+                    let letter = (b'a' + subtask_idx as u8) as char;
+                    let subtask_line = format!("     {}. {}", letter, &task.subtasks[subtask_idx]);
+                    filtered.push((task_num, Some(subtask_idx), subtask_line));
+                }
+            }
         }
-    }
-
-    // Apply filter
-    let filtered_items: Vec<_> = if let Some(filter_text) = filter {
-        display_items
-            .into_iter()
-            .filter(|(_, _, line)| line.to_lowercase().contains(&filter_text.to_lowercase()))
-            .collect()
+        
+        filtered
     } else {
-        display_items
+        // No filter - include everything
+        let mut all_items = Vec::new();
+        for (task_idx, task) in todo_file.tasks.iter().enumerate() {
+            let task_num = task_idx + 1;
+            let task_line = format!("{:3}. {}", task_num, task.text);
+            all_items.push((task_num, None, task_line));
+
+            // Add subtasks if any
+            for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
+                let letter = (b'a' + subtask_idx as u8) as char;
+                let subtask_line = format!("     {}. {}", letter, subtask);
+                all_items.push((task_num, Some(subtask_idx), subtask_line));
+            }
+        }
+        all_items
     };
 
-    if filtered_items.is_empty() {
+    if display_items.is_empty() {
         if filter.is_some() {
             println!(
                 "{}No items found matching filter: \"{}\"{}",
@@ -298,14 +309,14 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
     }
 
     let display_count = if all {
-        filtered_items.len()
+        display_items.len()
     } else {
-        num.min(filtered_items.len())
+        num.min(display_items.len())
     };
 
     let color_scheme = ColorScheme::new();
     
-    for (task_num, subtask_idx, line) in filtered_items.iter().take(display_count) {
+    for (task_num, subtask_idx, line) in display_items.iter().take(display_count) {
         if subtask_idx.is_none() {
             // Main task - use HSV-based bright colors
             let color = color_scheme.get_main_task_color(*task_num);
@@ -327,11 +338,11 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
         }
     }
 
-    if !all && filtered_items.len() > display_count {
+    if !all && display_items.len() > display_count {
         println!(
             "{}... and {} more items{}",
             color::Fg(color::Yellow),
-            filtered_items.len() - display_count,
+            display_items.len() - display_count,
             color::Fg(color::Reset)
         );
     }
@@ -354,21 +365,9 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
     let mut todo_file = parse_todo_file(&content)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let default_list = match todo_file.get_default_list_mut() {
-        Some(list) => list,
-        None => {
-            println!(
-                "{}No Default list found.{}",
-                color::Fg(color::Yellow),
-                color::Fg(color::Reset)
-            );
-            return Ok(());
-        }
-    };
-
-    if default_list.is_empty() {
+    if todo_file.is_empty() {
         println!(
-            "{}No notes to prioritize.{}",
+            "{}No notes found.{}",
             color::Fg(color::Yellow),
             color::Fg(color::Reset)
         );
@@ -380,19 +379,19 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
     for ref_str in refs {
         match TaskRef::parse(ref_str) {
             Ok(task_ref) => {
-                if task_ref.task_index >= default_list.tasks.len() {
+                if task_ref.task_index >= todo_file.tasks.len() {
                     println!(
                         "{}Invalid task number: {}. Valid range: 1-{}{}",
                         color::Fg(color::Red),
                         task_ref.task_index + 1,
-                        default_list.tasks.len(),
+                        todo_file.tasks.len(),
                         color::Fg(color::Reset)
                     );
                     return Ok(());
                 }
 
                 if let Some(subtask_idx) = task_ref.subtask_index {
-                    let task = &default_list.tasks[task_ref.task_index];
+                    let task = &todo_file.tasks[task_ref.task_index];
                     if subtask_idx >= task.subtasks.len() {
                         println!(
                             "{}Invalid subtask: {}{}. Task {} has {} subtasks{}",
@@ -438,20 +437,20 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
     let mut moved_tasks = Vec::new();
     
     for &task_idx in &tasks_to_move {
-        moved_tasks.push(default_list.tasks[task_idx].clone());
+        moved_tasks.push(todo_file.tasks[task_idx].clone());
     }
 
     // Add moved tasks first
     new_tasks.extend(moved_tasks.clone());
     
     // Add remaining tasks
-    for (idx, task) in default_list.tasks.iter().enumerate() {
+    for (idx, task) in todo_file.tasks.iter().enumerate() {
         if !moved_task_indices.contains(&idx) {
             new_tasks.push(task.clone());
         }
     }
 
-    default_list.tasks = new_tasks;
+    todo_file.tasks = new_tasks;
 
     let new_content = generate_todo_file(&todo_file);
     fs::write(todo_path, new_content)?;
@@ -490,19 +489,7 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     let mut todo_file = parse_todo_file(&content)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let default_list = match todo_file.get_default_list_mut() {
-        Some(list) => list,
-        None => {
-            println!(
-                "{}No Default list found.{}",
-                color::Fg(color::Yellow),
-                color::Fg(color::Reset)
-            );
-            return Ok(());
-        }
-    };
-
-    if default_list.is_empty() {
+    if todo_file.is_empty() {
         println!(
             "{}No notes to archive.{}",
             color::Fg(color::Yellow),
@@ -535,13 +522,13 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     let mut whole_tasks_to_remove = HashSet::new();
 
     for (ref_str, task_ref) in &task_refs {
-        if task_ref.task_index >= default_list.tasks.len() {
+        if task_ref.task_index >= todo_file.tasks.len() {
             println!(
                 "{}Invalid task number in '{}': {}. Valid range: 1-{}{}",
                 color::Fg(color::Red),
                 ref_str,
                 task_ref.task_index + 1,
-                default_list.tasks.len(),
+                todo_file.tasks.len(),
                 color::Fg(color::Reset)
             );
             return Ok(());
@@ -549,7 +536,7 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
 
         if let Some(subtask_idx) = task_ref.subtask_index {
             // Archiving a subtask
-            let task = &default_list.tasks[task_ref.task_index];
+            let task = &todo_file.tasks[task_ref.task_index];
             if subtask_idx >= task.subtasks.len() {
                 println!(
                     "{}Invalid subtask '{}': Task {} has {} subtasks{}",
@@ -570,12 +557,12 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
 
     // Collect items to archive
     for &task_idx in &whole_tasks_to_remove {
-        tasks_to_archive.push(default_list.tasks[task_idx].clone());
+        tasks_to_archive.push(todo_file.tasks[task_idx].clone());
     }
 
     for &(task_idx, subtask_idx) in &subtasks_to_remove {
         if !whole_tasks_to_remove.contains(&task_idx) {
-            let subtask_text = default_list.tasks[task_idx].subtasks[subtask_idx].clone();
+            let subtask_text = todo_file.tasks[task_idx].subtasks[subtask_idx].clone();
             tasks_to_archive.push(Task::new(subtask_text));
         }
     }
@@ -611,11 +598,11 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     for (task_idx, mut subtask_indices) in subtasks_by_task {
         subtask_indices.sort_by(|a, b| b.cmp(a)); // Sort in reverse order
         for subtask_idx in subtask_indices {
-            default_list.tasks[task_idx].subtasks.remove(subtask_idx);
+            todo_file.tasks[task_idx].subtasks.remove(subtask_idx);
         }
         
         // Check if this task now has no subtasks left and should be auto-completed
-        if default_list.tasks[task_idx].subtasks.is_empty() {
+        if todo_file.tasks[task_idx].subtasks.is_empty() {
             tasks_to_auto_complete.push(task_idx);
         }
     }
@@ -624,7 +611,7 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     let mut auto_completed_tasks = Vec::new();
     if !tasks_to_auto_complete.is_empty() {
         for &task_idx in &tasks_to_auto_complete {
-            auto_completed_tasks.push(default_list.tasks[task_idx].clone());
+            auto_completed_tasks.push(todo_file.tasks[task_idx].clone());
         }
         
         // Add auto-completed tasks to archive
@@ -642,7 +629,7 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     whole_task_indices.dedup(); // Remove duplicates in case a task was both manually selected and auto-completed
     
     for task_idx in whole_task_indices {
-        default_list.tasks.remove(task_idx);
+        todo_file.tasks.remove(task_idx);
     }
 
     // Save updated todo file
@@ -715,8 +702,7 @@ pub fn edit_note(todo_path: &Path) -> io::Result<()> {
 
     // Create the file if it doesn't exist
     if !todo_path.exists() {
-        let mut empty_file = TodoFile::new("TODOs".to_string());
-        empty_file.add_list(TaskList::new("Default".to_string()));
+        let empty_file = TodoFile::new("TODOs".to_string());
         let content = generate_todo_file(&empty_file);
         fs::write(todo_path, content)?;
     }

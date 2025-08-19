@@ -118,7 +118,7 @@ mod basic_operations {
         // Add first item
         let result = env.run_ldr(&["add", "First task"]);
         result.assert_success();
-        assert!(result.stdout.contains("✓ Added to Default: First task"));
+        assert!(result.stdout.contains("✓ Added: First task"));
         
         // Add second item (should go to top)
         let result = env.run_ldr(&["add", "Second task"]);
@@ -639,7 +639,6 @@ mod edit_functionality {
         // File should exist with proper structure
         let todos = env.read_todos();
         assert!(todos.contains("# TODOs"));
-        assert!(todos.contains("## Default"));
     }
     
     #[test]
@@ -694,7 +693,6 @@ mod migration_tests {
         // Verify content was migrated correctly
         let todos = env.read_todos();
         assert!(todos.contains("# TODOs"));
-        assert!(todos.contains("## Default"));
         assert!(todos.contains("- Task A"));
         assert!(todos.contains("- Task B with details"));
         assert!(todos.contains("- Task C"));
@@ -715,7 +713,7 @@ mod migration_tests {
         
         // Create markdown file first
         fs::create_dir_all(env.todos_path().parent().unwrap()).unwrap();
-        fs::write(&env.todos_path(), "# TODOs\n\n## Default\n- Existing task\n").unwrap();
+        fs::write(&env.todos_path(), "# TODOs\n\n- Existing task\n").unwrap();
         
         // Create old-style file
         let old_note_path = env.data_dir.join("ldr/note.txt");
