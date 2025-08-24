@@ -3,8 +3,8 @@
 //! A command-line todo application that emphasizes adding items to the top
 //! and provides an interactive review mode for processing items.
 
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use std::io;
 use xdg::BaseDirectories;
 
 mod commands;
@@ -74,42 +74,49 @@ enum Commands {
 
 /// Entry point that parses CLI arguments and dispatches to appropriate command handlers.
 /// Sets up XDG-compliant data directory paths and handles migration from plain text format.
-fn main() -> io::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     let base = BaseDirectories::with_prefix("ldr");
-    
+
     // Old plain text file paths
     let note_path = base
         .place_data_file("note.txt")
-        .expect("Failed to create data directory");
+        .context("Failed to create data directory for note.txt")?;
     let archive_path = base
         .place_data_file("archive.txt")
-        .expect("Failed to create data directory");
+        .context("Failed to create data directory for archive.txt")?;
 
     // New Markdown file paths
     let todo_md_path = base
         .place_data_file("todos.md")
-        .expect("Failed to create data directory");
+        .context("Failed to create data directory for todos.md")?;
     let archive_md_path = base
         .place_data_file("archive.md")
-        .expect("Failed to create data directory");
+        .context("Failed to create data directory for archive.md")?;
 
     // Check if migration is needed and perform it
     if migration::needs_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path) {
-        if let Err(e) = migration::perform_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path) {
-            eprintln!("Migration failed: {}", e);
-            return Err(io::Error::other(e));
-        }
+        migration::perform_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path)
+            .map_err(|e| anyhow::anyhow!("Migration from plain text to Markdown failed: {}", e))?;
     }
 
     match cli.command {
-        Commands::Add { text, under } => commands::add_entry(&todo_md_path, &text, under),
+        Commands::Add { text, under } => {
+            commands::add_entry(&todo_md_path, &text, under).context("Failed to add entry")?
+        }
         Commands::Ls { num, all, filter } => {
             commands::list_note(&todo_md_path, num, all, filter.as_deref())
+                .context("Failed to list notes")?
         }
-        Commands::Up { refs } => commands::prioritize_items(&todo_md_path, &refs),
-        Commands::Do { refs } => commands::archive_items(&todo_md_path, &archive_md_path, &refs),
-        Commands::Rm { refs } => commands::remove_items(&todo_md_path, &refs),
-        Commands::Edit => commands::edit_note(&todo_md_path),
+        Commands::Up { refs } => commands::prioritize_items(&todo_md_path, &refs)
+            .context("Failed to prioritize items")?,
+        Commands::Do { refs } => commands::archive_items(&todo_md_path, &archive_md_path, &refs)
+            .context("Failed to archive items")?,
+        Commands::Rm { refs } => {
+            commands::remove_items(&todo_md_path, &refs).context("Failed to remove items")?
+        }
+        Commands::Edit => commands::edit_note(&todo_md_path).context("Failed to edit note")?,
     }
+
+    Ok(())
 }

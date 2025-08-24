@@ -254,7 +254,7 @@ mod list_tests {
         for task in tasks {
             content.push_str(&format!("- {}\n", task));
         }
-        
+
         let mut file = NamedTempFile::new().unwrap();
         write!(file, "{}", content).unwrap();
         file
@@ -264,7 +264,7 @@ mod list_tests {
     #[test]
     fn test_list_with_all_flag() {
         let file = create_markdown_test_file(&[
-            "item 1", "item 2", "item 3", "item 4", "item 5", "item 6"
+            "item 1", "item 2", "item 3", "item 4", "item 5", "item 6",
         ]);
 
         // Test that all=true shows all items regardless of num
@@ -278,7 +278,7 @@ mod list_tests {
     #[test]
     fn test_list_without_all_flag() {
         let file = create_markdown_test_file(&[
-            "item 1", "item 2", "item 3", "item 4", "item 5", "item 6"
+            "item 1", "item 2", "item 3", "item 4", "item 5", "item 6",
         ]);
 
         // Test that all=false respects num limit
@@ -292,7 +292,10 @@ mod list_tests {
     #[test]
     fn test_list_with_filter_and_all() {
         let file = create_markdown_test_file(&[
-            "read: book 1", "write: article", "read: book 2", "task: cleanup"
+            "read: book 1",
+            "write: article",
+            "read: book 2",
+            "task: cleanup",
         ]);
 
         // Test that all=true with filter shows all matching items
@@ -479,14 +482,16 @@ mod remove_tests {
         for task in tasks {
             content.push_str(&format!("- {}\n", task));
         }
-        
+
         let mut file = NamedTempFile::new().unwrap();
         write!(file, "{}", content).unwrap();
         file
     }
 
     /// Helper function to create Markdown todo files with subtasks
-    fn create_markdown_test_file_with_subtasks(tasks_with_subtasks: &[(&str, &[&str])]) -> NamedTempFile {
+    fn create_markdown_test_file_with_subtasks(
+        tasks_with_subtasks: &[(&str, &[&str])],
+    ) -> NamedTempFile {
         let mut content = String::from("# TODOs\n\n");
         for (task, subtasks) in tasks_with_subtasks {
             content.push_str(&format!("- {}\n", task));
@@ -494,7 +499,7 @@ mod remove_tests {
                 content.push_str(&format!("  - {}\n", subtask));
             }
         }
-        
+
         let mut file = NamedTempFile::new().unwrap();
         write!(file, "{}", content).unwrap();
         file
@@ -519,7 +524,8 @@ mod remove_tests {
     /// Tests removing multiple items
     #[test]
     fn test_remove_multiple_items() {
-        let file = create_markdown_test_file(&["First item", "Second item", "Third item", "Fourth item"]);
+        let file =
+            create_markdown_test_file(&["First item", "Second item", "Third item", "Fourth item"]);
 
         let result = std::panic::catch_unwind(|| {
             remove_items(file.path(), &["1".to_string(), "3".to_string()]).unwrap();
@@ -570,7 +576,11 @@ mod remove_tests {
         let file = create_markdown_test_file(&["First item", "Second item", "Third item"]);
 
         let result = std::panic::catch_unwind(|| {
-            remove_items(file.path(), &["2".to_string(), "2".to_string(), "1".to_string()]).unwrap();
+            remove_items(
+                file.path(),
+                &["2".to_string(), "2".to_string(), "1".to_string()],
+            )
+            .unwrap();
         });
         assert!(result.is_ok());
 
@@ -636,17 +646,22 @@ mod remove_tests {
     #[test]
     fn test_auto_complete_parent_when_all_subtasks_done() {
         let file = create_markdown_test_file_with_subtasks(&[
-            ("Task A", &[]),  // Task with no subtasks
-            ("Task B", &["Subtask 1", "Subtask 2"]),  // Task with 2 subtasks
-            ("Task C", &["Another subtask"]),  // Task with 1 subtask
+            ("Task A", &[]),                         // Task with no subtasks
+            ("Task B", &["Subtask 1", "Subtask 2"]), // Task with 2 subtasks
+            ("Task C", &["Another subtask"]),        // Task with 1 subtask
         ]);
-        
+
         let temp_dir = tempfile::tempdir().unwrap();
         let archive_path = temp_dir.path().join("archive.md");
 
         // Archive both subtasks of Task B (2a and 2b)
         let result = std::panic::catch_unwind(|| {
-            archive_items(file.path(), &archive_path, &["2a".to_string(), "2b".to_string()]).unwrap();
+            archive_items(
+                file.path(),
+                &archive_path,
+                &["2a".to_string(), "2b".to_string()],
+            )
+            .unwrap();
         });
         assert!(result.is_ok());
 
@@ -658,7 +673,7 @@ mod remove_tests {
         // Verify both subtasks AND the parent task are in the archive
         assert!(archive_path.exists());
         let archive_content = std::fs::read_to_string(&archive_path).unwrap();
-        
+
         // Should contain both subtasks as individual items and the parent task
         assert!(archive_content.contains("- Subtask 1"));
         assert!(archive_content.contains("- Subtask 2"));

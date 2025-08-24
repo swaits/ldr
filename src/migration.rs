@@ -3,15 +3,20 @@
 //! This module handles the one-time conversion from the old plain text format
 //! to the new Markdown format with Default list structure.
 
-use crate::markdown::{Task, TodoFile, ArchiveFile};
+use crate::markdown::{ArchiveFile, Task, TodoFile};
 use std::fs;
 use std::path::Path;
 
 /// Check if migration is needed (plain text files exist but Markdown files don't)
-pub fn needs_migration(note_path: &Path, archive_path: &Path, todo_md_path: &Path, archive_md_path: &Path) -> bool {
+pub fn needs_migration(
+    note_path: &Path,
+    archive_path: &Path,
+    todo_md_path: &Path,
+    archive_md_path: &Path,
+) -> bool {
     let has_old_files = note_path.exists() || archive_path.exists();
     let has_new_files = todo_md_path.exists() || archive_md_path.exists();
-    
+
     has_old_files && !has_new_files
 }
 
@@ -21,8 +26,8 @@ pub fn migrate_note_file(note_path: &Path) -> Result<TodoFile, String> {
         return Ok(create_empty_todo_file());
     }
 
-    let content = fs::read_to_string(note_path)
-        .map_err(|e| format!("Failed to read note file: {}", e))?;
+    let content =
+        fs::read_to_string(note_path).map_err(|e| format!("Failed to read note file: {}", e))?;
 
     let mut todo_file = TodoFile::new("TODOs".to_string());
 
@@ -105,20 +110,22 @@ pub fn perform_migration(
     // Migrate note file
     let todo_file = migrate_note_file(note_path)?;
     let todo_content = crate::markdown::generate_todo_file(&todo_file);
-    
+
     fs::write(todo_md_path, todo_content)
         .map_err(|e| format!("Failed to write todos.md: {}", e))?;
 
-    // Migrate archive file  
+    // Migrate archive file
     let archive_file = migrate_archive_file(archive_path)?;
     let archive_content = crate::markdown::generate_archive_file(&archive_file);
-    
+
     fs::write(archive_md_path, archive_content)
         .map_err(|e| format!("Failed to write archive.md: {}", e))?;
 
     // Count migrated items
     let todo_count = todo_file.task_count();
-    let archive_count = archive_file.entries.first()
+    let archive_count = archive_file
+        .entries
+        .first()
         .and_then(|e| e.lists.get("Default"))
         .map(|tasks| tasks.len())
         .unwrap_or(0);
@@ -149,9 +156,9 @@ mod tests {
     fn test_migrate_note_file() {
         let content = "First task\nSecond task\nThird task\n";
         let file = create_test_file_with_content(content);
-        
+
         let result = migrate_note_file(file.path()).unwrap();
-        
+
         assert_eq!(result.title, "TODOs");
         assert_eq!(result.tasks.len(), 3);
         assert_eq!(result.tasks[0].text, "First task");
@@ -163,7 +170,7 @@ mod tests {
     fn test_migrate_empty_note_file() {
         let file = create_test_file_with_content("");
         let result = migrate_note_file(file.path()).unwrap();
-        
+
         assert_eq!(result.title, "TODOs");
         assert_eq!(result.tasks.len(), 0);
     }
@@ -172,12 +179,12 @@ mod tests {
     fn test_migrate_archive_file() {
         let content = "Completed task 1\nCompleted task 2\n";
         let file = create_test_file_with_content(content);
-        
+
         let result = migrate_archive_file(file.path()).unwrap();
-        
+
         assert_eq!(result.title, "Archive");
         assert_eq!(result.entries.len(), 1);
-        
+
         let entry = &result.entries[0];
         let tasks = entry.lists.get("Default").unwrap();
         assert_eq!(tasks.len(), 2);
@@ -189,10 +196,10 @@ mod tests {
     fn test_migrate_nonexistent_files() {
         let temp_dir = tempfile::tempdir().unwrap();
         let nonexistent = temp_dir.path().join("nonexistent.txt");
-        
+
         let todo_result = migrate_note_file(&nonexistent).unwrap();
         assert!(todo_result.is_empty());
-        
+
         let archive_result = migrate_archive_file(&nonexistent).unwrap();
         assert!(archive_result.entries.is_empty());
     }
@@ -206,18 +213,33 @@ mod tests {
         let archive_md_path = temp_dir.path().join("archive.md");
 
         // No files exist - no migration needed
-        assert!(!needs_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path));
+        assert!(!needs_migration(
+            &note_path,
+            &archive_path,
+            &todo_md_path,
+            &archive_md_path
+        ));
 
         // Create old file
         fs::write(&note_path, "test").unwrap();
-        
+
         // Old file exists, no new files - migration needed
-        assert!(needs_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path));
+        assert!(needs_migration(
+            &note_path,
+            &archive_path,
+            &todo_md_path,
+            &archive_md_path
+        ));
 
         // Create new file too
         fs::write(&todo_md_path, "test").unwrap();
-        
+
         // Both old and new files exist - no migration needed
-        assert!(!needs_migration(&note_path, &archive_path, &todo_md_path, &archive_md_path));
+        assert!(!needs_migration(
+            &note_path,
+            &archive_path,
+            &todo_md_path,
+            &archive_md_path
+        ));
     }
 }

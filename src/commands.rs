@@ -5,17 +5,17 @@
 //! Now supports subtasks and multiple lists in Markdown format.
 
 use crate::markdown::{
-    parse_todo_file, generate_todo_file, parse_archive_file, generate_archive_file,
-    Task, TodoFile, ArchiveFile, TaskRef
+    generate_archive_file, generate_todo_file, parse_archive_file, parse_todo_file, ArchiveFile,
+    Task, TaskRef, TodoFile,
 };
+use anyhow::{anyhow, Context, Result};
 use std::collections::HashSet;
 use std::env;
+use std::fmt;
 use std::fs;
-use std::io;
 use std::path::Path;
 use std::process::Command;
 use termion::color;
-use std::fmt;
 
 // Custom 256-color support
 struct Color256(u8);
@@ -32,21 +32,21 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
     let c = v * s;
     let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
     let m = v - c;
-    
-    let (r, g, b) = if h >= 0.0 && h < 1.0 {
+
+    let (r, g, b) = if (0.0..1.0).contains(&h) {
         (c, x, 0.0)
-    } else if h >= 1.0 && h < 2.0 {
+    } else if (1.0..2.0).contains(&h) {
         (x, c, 0.0)
-    } else if h >= 2.0 && h < 3.0 {
+    } else if (2.0..3.0).contains(&h) {
         (0.0, c, x)
-    } else if h >= 3.0 && h < 4.0 {
+    } else if (3.0..4.0).contains(&h) {
         (0.0, x, c)
-    } else if h >= 4.0 && h < 5.0 {
+    } else if (4.0..5.0).contains(&h) {
         (x, 0.0, c)
     } else {
         (c, 0.0, x)
     };
-    
+
     (
         ((r + m) * 255.0) as u8,
         ((g + m) * 255.0) as u8,
@@ -58,10 +58,28 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
 fn rgb_to_256_color(r: u8, g: u8, b: u8) -> u8 {
     // For colors 16-231: 6x6x6 color cube
     // Each component ranges from 0-5, mapped from 0-255
-    let r_index = if r < 48 { 0 } else if r < 115 { 1 } else { (r - 55) / 40 };
-    let g_index = if g < 48 { 0 } else if g < 115 { 1 } else { (g - 55) / 40 };
-    let b_index = if b < 48 { 0 } else if b < 115 { 1 } else { (b - 55) / 40 };
-    
+    let r_index = if r < 48 {
+        0
+    } else if r < 115 {
+        1
+    } else {
+        (r - 55) / 40
+    };
+    let g_index = if g < 48 {
+        0
+    } else if g < 115 {
+        1
+    } else {
+        (g - 55) / 40
+    };
+    let b_index = if b < 48 {
+        0
+    } else if b < 115 {
+        1
+    } else {
+        (b - 55) / 40
+    };
+
     16 + 36 * r_index + 6 * g_index + b_index
 }
 
@@ -74,11 +92,11 @@ fn hsv_color(h: f32, s: f32, v: f32) -> Color256 {
 // Color scheme configuration
 struct ColorScheme {
     // Main task colors (bright, high saturation)
-    task1_hue: f32,  // Primary hue for odd tasks
-    task2_hue: f32,  // Primary hue for even tasks
+    task1_hue: f32, // Primary hue for odd tasks
+    task2_hue: f32, // Primary hue for even tasks
     main_saturation: f32,
     main_value: f32,
-    
+
     // Subtask adjustments
     value_reduction: f32, // Amount to reduce brightness for subtasks
 }
@@ -88,27 +106,27 @@ impl ColorScheme {
         if Self::is_dark_terminal() {
             // Dark terminal scheme - bright colors
             ColorScheme {
-                task1_hue: 200.0,    // Light cyan-blue
-                task2_hue: 40.0,     // Light desert tan/gold 
+                task1_hue: 200.0, // Light cyan-blue
+                task2_hue: 40.0,  // Light desert tan/gold
                 main_saturation: 0.7,
-                main_value: 0.95,    // Very bright
+                main_value: 0.95, // Very bright
                 value_reduction: 0.2,
             }
         } else {
             // Light terminal scheme - darker colors
             ColorScheme {
-                task1_hue: 210.0,    // Darker blue
-                task2_hue: 30.0,     // Darker orange
+                task1_hue: 210.0, // Darker blue
+                task2_hue: 30.0,  // Darker orange
                 main_saturation: 0.8,
-                main_value: 0.6,     // Much darker for light backgrounds
+                main_value: 0.6, // Much darker for light backgrounds
                 value_reduction: 0.15,
             }
         }
     }
-    
+
     fn is_dark_terminal() -> bool {
         // Check various indicators for dark terminal
-        
+
         // Check COLORFGBG environment variable (format: "15;0" means white fg, black bg)
         if let Ok(colorfgbg) = std::env::var("COLORFGBG") {
             if let Some(bg) = colorfgbg.split(';').nth(1) {
@@ -118,14 +136,14 @@ impl ColorScheme {
                 }
             }
         }
-        
+
         // Check for common dark terminal themes in environment
         if let Ok(term) = std::env::var("TERM") {
             if term.contains("dark") {
                 return true;
             }
         }
-        
+
         // Check common terminal emulators that default to dark
         if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
             match term_program.as_str() {
@@ -133,11 +151,11 @@ impl ColorScheme {
                 _ => {}
             }
         }
-        
+
         // Default to dark terminal (most developers use dark themes)
         true
     }
-    
+
     fn get_main_task_color(&self, task_num: usize) -> Color256 {
         let hue = if task_num % 2 == 1 {
             self.task1_hue
@@ -146,18 +164,18 @@ impl ColorScheme {
         };
         hsv_color(hue, self.main_saturation, self.main_value)
     }
-    
+
     fn get_subtask_color(&self, task_num: usize, _subtask_idx: usize) -> Color256 {
         let base_hue = if task_num % 2 == 1 {
             self.task1_hue
         } else {
             self.task2_hue
         };
-        
+
         // Simply inherit parent color but reduce saturation and value
         let reduced_saturation = self.main_saturation - 0.15; // Reduce saturation by 15%
         let reduced_value = self.main_value - self.value_reduction;
-        
+
         hsv_color(base_hue, reduced_saturation, reduced_value)
     }
 }
@@ -165,10 +183,25 @@ impl ColorScheme {
 /// Adds a new entry to the todo file.
 /// Creates the file if it doesn't exist, otherwise prepends to the main list.
 /// Can add as subtask if `under` is specified.
-pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> io::Result<()> {
+pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> Result<()> {
+    // Validate input
+    if text.trim().is_empty() {
+        return Err(anyhow!("Cannot add empty task"));
+    }
+
+    // Limit task text length to prevent abuse
+    const MAX_TASK_LENGTH: usize = 500;
+    if text.len() > MAX_TASK_LENGTH {
+        return Err(anyhow!(
+            "Task text too long ({}). Maximum length is {} characters",
+            text.len(),
+            MAX_TASK_LENGTH
+        ));
+    }
     let mut todo_file = if path.exists() {
-        let content = fs::read_to_string(path)?;
-        parse_todo_file(&content).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read file: {}", path.display()))?;
+        parse_todo_file(&content).map_err(|e| anyhow!("Failed to parse file: {}", e))?
     } else {
         TodoFile::new("TODOs".to_string())
     };
@@ -176,12 +209,24 @@ pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> io::Result<()
     if let Some(task_num) = under {
         // Add as subtask
         if task_num == 0 || task_num > todo_file.tasks.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Invalid task number: {}. Valid range: 1-{}", task_num, todo_file.tasks.len())
+            return Err(anyhow!(
+                "Invalid task number: {}. Valid range: 1-{}",
+                task_num,
+                todo_file.tasks.len()
             ));
         }
-        
+
+        // Limit number of subtasks per task
+        const MAX_SUBTASKS: usize = 26; // a-z
+        let task = &todo_file.tasks[task_num - 1];
+        if task.subtasks.len() >= MAX_SUBTASKS {
+            return Err(anyhow!(
+                "Task {} already has maximum number of subtasks ({})",
+                task_num,
+                MAX_SUBTASKS
+            ));
+        }
+
         todo_file.tasks[task_num - 1].add_subtask(text.to_string());
         println!(
             "{}✓ Added subtask to task {}: {}{}",
@@ -192,6 +237,15 @@ pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> io::Result<()
         );
     } else {
         // Add as new main task at top
+        // Limit total number of tasks to prevent abuse
+        const MAX_TASKS: usize = 1000;
+        if todo_file.tasks.len() >= MAX_TASKS {
+            return Err(anyhow!(
+                "Maximum number of tasks ({}) reached. Please archive or remove some tasks first",
+                MAX_TASKS
+            ));
+        }
+
         let task = Task::new(text.to_string());
         todo_file.prepend_task(task);
         println!(
@@ -203,12 +257,12 @@ pub fn add_entry(path: &Path, text: &str, under: Option<usize>) -> io::Result<()
     }
 
     let content = generate_todo_file(&todo_file);
-    fs::write(path, content)
+    fs::write(path, content).with_context(|| format!("Failed to write file: {}", path.display()))
 }
 
 /// Lists tasks with numbered display including subtasks.
 /// Displays task numbers and subtask letters, supports filtering.
-pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io::Result<()> {
+pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> Result<()> {
     if !path.exists() {
         println!(
             "{}No notes yet.{}",
@@ -218,9 +272,10 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
         return Ok(());
     }
 
-    let content = fs::read_to_string(path)?;
-    let todo_file = parse_todo_file(&content)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+    let todo_file =
+        parse_todo_file(&content).map_err(|e| anyhow!("Failed to parse file: {}", e))?;
 
     if todo_file.is_empty() {
         println!(
@@ -235,11 +290,11 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
     let display_items: Vec<_> = if let Some(filter_text) = filter {
         let mut filtered = Vec::new();
         let filter_lower = filter_text.to_lowercase();
-        
+
         for (task_idx, task) in todo_file.tasks.iter().enumerate() {
             let task_num = task_idx + 1;
             let task_matches = task.text.to_lowercase().contains(&filter_lower);
-            
+
             // Check which subtasks match
             let mut matching_subtasks = Vec::new();
             for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
@@ -247,12 +302,12 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
                     matching_subtasks.push(subtask_idx);
                 }
             }
-            
+
             if task_matches {
                 // If task matches, include task and ALL its subtasks
                 let task_line = format!("{:3}. {}", task_num, task.text);
                 filtered.push((task_num, None, task_line));
-                
+
                 for (subtask_idx, subtask) in task.subtasks.iter().enumerate() {
                     let letter = (b'a' + subtask_idx as u8) as char;
                     let subtask_line = format!("     {}. {}", letter, subtask);
@@ -262,7 +317,7 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
                 // If only subtasks match, include task and only matching subtasks
                 let task_line = format!("{:3}. {}", task_num, task.text);
                 filtered.push((task_num, None, task_line));
-                
+
                 for &subtask_idx in &matching_subtasks {
                     let letter = (b'a' + subtask_idx as u8) as char;
                     let subtask_line = format!("     {}. {}", letter, &task.subtasks[subtask_idx]);
@@ -270,7 +325,7 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
                 }
             }
         }
-        
+
         filtered
     } else {
         // No filter - include everything
@@ -295,7 +350,7 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
             println!(
                 "{}No items found matching filter: \"{}\"{}",
                 color::Fg(color::Yellow),
-                filter.unwrap(),
+                filter.unwrap_or(""),
                 color::Fg(color::Reset)
             );
         } else {
@@ -315,26 +370,16 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
     };
 
     let color_scheme = ColorScheme::new();
-    
+
     for (task_num, subtask_idx, line) in display_items.iter().take(display_count) {
         if subtask_idx.is_none() {
             // Main task - use HSV-based bright colors
             let color = color_scheme.get_main_task_color(*task_num);
-            println!(
-                "{}{}{}",
-                color,
-                line,
-                color::Fg(color::Reset)
-            );
+            println!("{}{}{}", color, line, color::Fg(color::Reset));
         } else {
             // Subtask - use same color family as parent but dimmer
             let color = color_scheme.get_subtask_color(*task_num, subtask_idx.unwrap());
-            println!(
-                "{}{}{}",
-                color,
-                line,
-                color::Fg(color::Reset)
-            );
+            println!("{}{}{}", color, line, color::Fg(color::Reset));
         }
     }
 
@@ -351,7 +396,7 @@ pub fn list_note(path: &Path, num: usize, all: bool, filter: Option<&str>) -> io
 }
 
 /// Parse task references and perform operations on tasks/subtasks
-pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
+pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> Result<()> {
     if !todo_path.exists() {
         println!(
             "{}No notes found.{}",
@@ -361,9 +406,10 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
         return Ok(());
     }
 
-    let content = fs::read_to_string(todo_path)?;
-    let mut todo_file = parse_todo_file(&content)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let content = fs::read_to_string(todo_path)
+        .with_context(|| format!("Failed to read file: {}", todo_path.display()))?;
+    let mut todo_file =
+        parse_todo_file(&content).map_err(|e| anyhow!("Failed to parse file: {}", e))?;
 
     if todo_file.is_empty() {
         println!(
@@ -432,41 +478,44 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
         }
     }
 
-    // Move tasks to front in the order specified
-    let mut new_tasks = Vec::new();
-    let mut moved_tasks = Vec::new();
-    
+    // Create new task order by swapping moved tasks to front
+    let old_tasks = std::mem::take(&mut todo_file.tasks);
+    let mut new_tasks = Vec::with_capacity(old_tasks.len());
+    let mut moved_task_names = Vec::new();
+
+    // First add the moved tasks in the order specified
     for &task_idx in &tasks_to_move {
-        moved_tasks.push(todo_file.tasks[task_idx].clone());
+        if task_idx < old_tasks.len() {
+            new_tasks.push(old_tasks[task_idx].clone());
+            moved_task_names.push(old_tasks[task_idx].text.clone());
+        }
     }
 
-    // Add moved tasks first
-    new_tasks.extend(moved_tasks.clone());
-    
-    // Add remaining tasks
-    for (idx, task) in todo_file.tasks.iter().enumerate() {
+    // Then add all non-moved tasks
+    for (idx, task) in old_tasks.into_iter().enumerate() {
         if !moved_task_indices.contains(&idx) {
-            new_tasks.push(task.clone());
+            new_tasks.push(task);
         }
     }
 
     todo_file.tasks = new_tasks;
 
     let new_content = generate_todo_file(&todo_file);
-    fs::write(todo_path, new_content)?;
+    fs::write(todo_path, new_content)
+        .with_context(|| format!("Failed to write file: {}", todo_path.display()))?;
 
     println!(
         "{}✓ Prioritized {} task(s){}",
         color::Fg(color::Green),
-        moved_tasks.len(),
+        moved_task_names.len(),
         color::Fg(color::Reset)
     );
-    
-    for task in moved_tasks {
+
+    for task_name in moved_task_names {
         println!(
             "  {}{}{}",
             color::Fg(color::Magenta),
-            task.text,
+            task_name,
             color::Fg(color::Reset)
         );
     }
@@ -474,8 +523,13 @@ pub fn prioritize_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
     Ok(())
 }
 
-/// Archive specified tasks or subtasks
-pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> io::Result<()> {
+/// Internal helper to process items for removal or archiving
+fn process_items_for_removal(
+    todo_path: &Path,
+    refs: &[String],
+    archive_path: Option<&Path>,
+) -> Result<()> {
+    let should_archive = archive_path.is_some();
     if !todo_path.exists() {
         println!(
             "{}No notes found.{}",
@@ -485,14 +539,17 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
         return Ok(());
     }
 
-    let content = fs::read_to_string(todo_path)?;
-    let mut todo_file = parse_todo_file(&content)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let content = fs::read_to_string(todo_path)
+        .with_context(|| format!("Failed to read file: {}", todo_path.display()))?;
+    let mut todo_file =
+        parse_todo_file(&content).map_err(|e| anyhow!("Failed to parse file: {}", e))?;
 
     if todo_file.is_empty() {
+        let action = if should_archive { "archive" } else { "remove" };
         println!(
-            "{}No notes to archive.{}",
+            "{}No notes to {}.{}",
             color::Fg(color::Yellow),
+            action,
             color::Fg(color::Reset)
         );
         return Ok(());
@@ -567,40 +624,52 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
         }
     }
 
-    // Load archive file
-    let mut archive_file = if archive_path.exists() {
-        let archive_content = fs::read_to_string(archive_path)?;
-        parse_archive_file(&archive_content)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+    // Load archive file if we're archiving
+    let mut archive_file = if let Some(archive_path) = archive_path {
+        if archive_path.exists() {
+            let archive_content = fs::read_to_string(archive_path)
+                .with_context(|| format!("Failed to read archive: {}", archive_path.display()))?;
+            parse_archive_file(&archive_content)
+                .map_err(|e| anyhow!("Failed to parse file: {}", e))?
+        } else {
+            ArchiveFile::new()
+        }
     } else {
         ArchiveFile::new()
     };
 
-    // Add items to archive
-    if !tasks_to_archive.is_empty() {
-        archive_file.add_items_for_today("Default", tasks_to_archive.clone());
-        let archive_content = generate_archive_file(&archive_file);
-        fs::write(archive_path, archive_content)?;
+    // Add items to archive if we're archiving
+    if should_archive && !tasks_to_archive.is_empty() {
+        if let Some(archive_path) = archive_path {
+            archive_file.add_items_for_today("Default", tasks_to_archive.clone());
+            let archive_content = generate_archive_file(&archive_file);
+            fs::write(archive_path, archive_content)
+                .with_context(|| format!("Failed to write archive: {}", archive_path.display()))?;
+        }
     }
 
     // Remove items from todo file
     // Remove subtasks first (in reverse order to maintain indices)
-    let mut subtasks_by_task: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    let mut subtasks_by_task: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
     for &(task_idx, subtask_idx) in &subtasks_to_remove {
         if !whole_tasks_to_remove.contains(&task_idx) {
-            subtasks_by_task.entry(task_idx).or_default().push(subtask_idx);
+            subtasks_by_task
+                .entry(task_idx)
+                .or_default()
+                .push(subtask_idx);
         }
     }
 
     // Track tasks that might need auto-completion
     let mut tasks_to_auto_complete = Vec::new();
-    
+
     for (task_idx, mut subtask_indices) in subtasks_by_task {
         subtask_indices.sort_by(|a, b| b.cmp(a)); // Sort in reverse order
         for subtask_idx in subtask_indices {
             todo_file.tasks[task_idx].subtasks.remove(subtask_idx);
         }
-        
+
         // Check if this task now has no subtasks left and should be auto-completed
         if todo_file.tasks[task_idx].subtasks.is_empty() {
             tasks_to_auto_complete.push(task_idx);
@@ -613,12 +682,16 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
         for &task_idx in &tasks_to_auto_complete {
             auto_completed_tasks.push(todo_file.tasks[task_idx].clone());
         }
-        
-        // Add auto-completed tasks to archive
-        if !auto_completed_tasks.is_empty() {
-            archive_file.add_items_for_today("Default", auto_completed_tasks.clone());
-            let archive_content = generate_archive_file(&archive_file);
-            fs::write(archive_path, archive_content)?;
+
+        // Add auto-completed tasks to archive if we're archiving
+        if should_archive && !auto_completed_tasks.is_empty() {
+            if let Some(archive_path) = archive_path {
+                archive_file.add_items_for_today("Default", auto_completed_tasks.clone());
+                let archive_content = generate_archive_file(&archive_file);
+                fs::write(archive_path, archive_content).with_context(|| {
+                    format!("Failed to write archive: {}", archive_path.display())
+                })?;
+            }
         }
     }
 
@@ -627,23 +700,30 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     whole_task_indices.extend(tasks_to_auto_complete);
     whole_task_indices.sort_by(|a, b| b.cmp(a));
     whole_task_indices.dedup(); // Remove duplicates in case a task was both manually selected and auto-completed
-    
+
     for task_idx in whole_task_indices {
         todo_file.tasks.remove(task_idx);
     }
 
     // Save updated todo file
     let new_content = generate_todo_file(&todo_file);
-    fs::write(todo_path, new_content)?;
+    fs::write(todo_path, new_content)
+        .with_context(|| format!("Failed to write file: {}", todo_path.display()))?;
 
-    let total_archived = tasks_to_archive.len() + auto_completed_tasks.len();
+    let total_processed = tasks_to_archive.len() + auto_completed_tasks.len();
+    let action_verb = if should_archive {
+        "Archived"
+    } else {
+        "Removed"
+    };
     println!(
-        "{}✓ Archived {} item(s){}",
+        "{}✓ {} {} item(s){}",
         color::Fg(color::Green),
-        total_archived,
+        action_verb,
+        total_processed,
         color::Fg(color::Reset)
     );
-    
+
     for task in tasks_to_archive {
         println!(
             "  {}{}{}",
@@ -652,7 +732,7 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
             color::Fg(color::Reset)
         );
     }
-    
+
     // Show auto-completed tasks
     if !auto_completed_tasks.is_empty() {
         for task in auto_completed_tasks {
@@ -668,52 +748,38 @@ pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> 
     Ok(())
 }
 
-/// Remove items without archiving (same logic as archive but don't save to archive)
-pub fn remove_items(todo_path: &Path, refs: &[String]) -> io::Result<()> {
-    // Implementation is similar to archive_items but without the archiving part
-    // For brevity, I'll implement a simplified version that reuses archive logic
-    
-    // Create a temporary path that we won't actually use
-    let temp_dir = std::env::temp_dir();
-    let temp_archive = temp_dir.join("temp_archive_unused.md");
-    
-    // Call archive_items but then delete the temp archive file
-    let result = archive_items(todo_path, &temp_archive, refs);
-    
-    // Clean up temp file if it was created
-    if temp_archive.exists() {
-        let _ = fs::remove_file(&temp_archive);
-    }
-    
-    // Change the success message to indicate removal instead of archiving
-    if result.is_ok() {
-        // The archive_items function already printed success, so we need to override
-        // For simplicity in this implementation, we'll leave the message as is
-        // In a full implementation, we'd refactor to avoid this duplication
-    }
-    
-    result
+/// Archive specified tasks or subtasks
+pub fn archive_items(todo_path: &Path, archive_path: &Path, refs: &[String]) -> Result<()> {
+    process_items_for_removal(todo_path, refs, Some(archive_path))
 }
 
+/// Remove items without archiving
+pub fn remove_items(todo_path: &Path, refs: &[String]) -> Result<()> {
+    process_items_for_removal(todo_path, refs, None)
+}
 
 /// Opens the todo file in the user's preferred editor
-pub fn edit_note(todo_path: &Path) -> io::Result<()> {
+pub fn edit_note(todo_path: &Path) -> Result<()> {
     let editor = env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
 
     // Create the file if it doesn't exist
     if !todo_path.exists() {
         let empty_file = TodoFile::new("TODOs".to_string());
         let content = generate_todo_file(&empty_file);
-        fs::write(todo_path, content)?;
+        fs::write(todo_path, content)
+            .with_context(|| format!("Failed to write file: {}", todo_path.display()))?;
     }
 
-    let status = Command::new(&editor).arg(todo_path).status()?;
+    let status = Command::new(&editor)
+        .arg(todo_path)
+        .status()
+        .with_context(|| format!("Failed to run editor: {}", editor))?;
 
     if !status.success() {
         println!(
             "{}Editor exited with error code: {}{}",
             color::Fg(color::Red),
-            status.code().unwrap_or(-1),
+            status.code().unwrap_or(1),
             color::Fg(color::Reset)
         );
     }

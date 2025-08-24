@@ -94,7 +94,10 @@ impl TaskRef {
                 task_part.push(ch);
             } else if ch.is_ascii_lowercase() {
                 if i == 0 {
-                    return Err(format!("Task reference must start with a number: {}", input));
+                    return Err(format!(
+                        "Task reference must start with a number: {}",
+                        input
+                    ));
                 }
                 if subtask_char.is_some() {
                     return Err(format!("Multiple subtask letters not allowed: {}", input));
@@ -109,9 +112,24 @@ impl TaskRef {
             return Err(format!("No task number found: {}", input));
         }
 
-        let task_index = task_part.parse::<usize>().map_err(|_| {
-            format!("Invalid task number: {}", task_part)
-        })? - 1; // Convert to 0-based
+        let task_num = task_part
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid task number: {}", task_part))?;
+
+        // Validate task number range
+        if task_num == 0 {
+            return Err("Task number must be at least 1".to_string());
+        }
+
+        const MAX_TASK_NUM: usize = 10000;
+        if task_num > MAX_TASK_NUM {
+            return Err(format!(
+                "Task number too large: {}. Maximum is {}",
+                task_num, MAX_TASK_NUM
+            ));
+        }
+
+        let task_index = task_num - 1; // Convert to 0-based
 
         let subtask_index = subtask_char.map(|ch| (ch as usize) - ('a' as usize));
 
@@ -136,8 +154,9 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
 
     let mut todo_file = TodoFile::new("TODOs".to_string());
     let mut current_task: Option<Task> = None;
+    let mut warned_about_deep_nesting = false;
 
-    for line in lines.iter() {
+    for (line_num, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
@@ -156,7 +175,33 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
         else if trimmed.starts_with("##") {
             continue;
         }
-        // Handle subtasks - be flexible with indentation (2, 3, or 4 spaces, or tab)
+        // Check for deep nesting first - warn and convert to level 1 subtask
+        else if (line.starts_with("     ") || line.starts_with("\t\t"))
+            && (line.trim_start().starts_with("- ")
+                || line.trim_start().starts_with("* ")
+                || line.trim_start().starts_with("+ "))
+        {
+            // This is a deeply nested item - warn once and treat as level 1 subtask
+            if !warned_about_deep_nesting {
+                eprintln!("Warning: Deep nesting detected (line {}). Converting to level 1 subtask. Only single-level subtasks are supported.", line_num + 1);
+                warned_about_deep_nesting = true;
+            }
+
+            let item_text = line
+                .trim_start()
+                .strip_prefix("- ")
+                .or_else(|| line.trim_start().strip_prefix("* "))
+                .or_else(|| line.trim_start().strip_prefix("+ "))
+                .unwrap_or(line.trim_start());
+
+            if let Some(ref mut task) = current_task {
+                task.add_subtask(item_text.trim().to_string());
+            } else {
+                // If no current task, treat as main task
+                current_task = Some(Task::new(item_text.trim().to_string()));
+            }
+        }
+        // Handle subtasks - be flexible with indentation (2, 3, or 4 spaces, or single tab)
         else if let Some(subtask_text) = line.strip_prefix("  - ") {
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
@@ -172,14 +217,14 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
                 current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         } else if let Some(subtask_text) = line.strip_prefix("    - ") {
-            // Handle 4-space indentation (but not deeper nesting)
+            // Handle 4-space indentation
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
                 current_task = Some(Task::new(subtask_text.trim().to_string()));
             }
         } else if let Some(subtask_text) = line.strip_prefix("\t- ") {
-            // Handle tab indentation
+            // Handle single tab indentation
             if let Some(ref mut task) = current_task {
                 task.add_subtask(subtask_text.trim().to_string());
             } else {
@@ -202,17 +247,12 @@ pub fn parse_todo_file(content: &str) -> Result<TodoFile, String> {
 
             current_task = Some(Task::new(task_text.trim().to_string()));
         } else if let Some(task_text) = trimmed.strip_prefix("+ ") {
-            // Handle plus bullet points  
+            // Handle plus bullet points
             if let Some(task) = current_task.take() {
                 todo_file.add_task(task);
             }
 
             current_task = Some(Task::new(task_text.trim().to_string()));
-        }
-        // Check for overly deep nesting (5+ spaces or multiple tabs)
-        else if line.starts_with("     - ") || line.starts_with("\t\t") {
-            // Skip deep nesting but don't error - just ignore these lines
-            continue;
         }
         // Handle non-markdown lines gracefully - ignore unknown formatting
         else if !trimmed.is_empty() {
@@ -275,26 +315,22 @@ impl ArchiveFile {
 
     pub fn add_items_for_today(&mut self, list_name: &str, tasks: Vec<Task>) {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        
-        // Find or create today's entry
-        let entry = self.entries.iter_mut()
-            .find(|e| e.date == today)
-            .map(|e| e as *mut ArchiveEntry);
 
-        if let Some(entry) = entry {
-            unsafe {
-                (*entry).lists
-                    .entry(list_name.to_string())
-                    .or_insert_with(Vec::new)
-                    .extend(tasks);
-            }
+        // Find today's entry position
+        let entry_pos = self.entries.iter().position(|e| e.date == today);
+
+        if let Some(pos) = entry_pos {
+            // Entry exists, add tasks to it
+            self.entries[pos]
+                .lists
+                .entry(list_name.to_string())
+                .or_default()
+                .extend(tasks);
         } else {
+            // Create new entry for today
             let mut lists = HashMap::new();
             lists.insert(list_name.to_string(), tasks);
-            self.entries.insert(0, ArchiveEntry {
-                date: today,
-                lists,
-            });
+            self.entries.insert(0, ArchiveEntry { date: today, lists });
         }
     }
 }
@@ -323,9 +359,10 @@ pub fn parse_archive_file(content: &str) -> Result<ArchiveFile, String> {
         } else if let Some(date) = trimmed.strip_prefix("## ") {
             // Save previous task and entry
             if let (Some(mut entry), Some(task)) = (current_entry.take(), current_task.take()) {
-                entry.lists
+                entry
+                    .lists
                     .entry(current_list_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(task);
                 archive.entries.push(entry);
             } else if let Some(entry) = current_entry.take() {
@@ -339,20 +376,24 @@ pub fn parse_archive_file(content: &str) -> Result<ArchiveFile, String> {
             current_list_name = "Default".to_string();
         } else if let Some(list_name) = trimmed.strip_prefix("### ") {
             // Save previous task
-            if let (Some(ref mut entry), Some(task)) = (current_entry.as_mut(), current_task.take()) {
-                entry.lists
+            if let (Some(ref mut entry), Some(task)) = (current_entry.as_mut(), current_task.take())
+            {
+                entry
+                    .lists
                     .entry(current_list_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(task);
             }
 
             current_list_name = list_name.to_string();
         } else if let Some(task_text) = trimmed.strip_prefix("- ") {
             // Save previous task
-            if let (Some(ref mut entry), Some(task)) = (current_entry.as_mut(), current_task.take()) {
-                entry.lists
+            if let (Some(ref mut entry), Some(task)) = (current_entry.as_mut(), current_task.take())
+            {
+                entry
+                    .lists
                     .entry(current_list_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(task);
             }
 
@@ -379,10 +420,7 @@ pub fn parse_archive_file(content: &str) -> Result<ArchiveFile, String> {
     // Save final task and entry
     if let Some(mut entry) = current_entry {
         if let Some(task) = current_task {
-            entry.lists
-                .entry(current_list_name)
-                .or_insert_with(Vec::new)
-                .push(task);
+            entry.lists.entry(current_list_name).or_default().push(task);
         }
         archive.entries.push(entry);
     }
@@ -461,6 +499,11 @@ mod tests {
         assert!(TaskRef::parse("1A").is_err());
         assert!(TaskRef::parse("1ab").is_err());
         assert!(TaskRef::parse("1-2").is_err());
+
+        // Test validation edge cases
+        assert!(TaskRef::parse("0").is_err()); // Zero task number
+        assert!(TaskRef::parse("10001").is_err()); // Too large task number
+        assert!(TaskRef::parse("999999999999999999999").is_err()); // Integer overflow
     }
 
     #[test]
@@ -485,7 +528,7 @@ mod tests {
     #[test]
     fn test_generate_todo_file() {
         let mut todo_file = TodoFile::new("TODOs".to_string());
-        
+
         let mut task = Task::new("Task with subtasks".to_string());
         task.add_subtask("Subtask 1".to_string());
         task.add_subtask("Subtask 2".to_string());
@@ -544,22 +587,22 @@ This is a code block
 
         let todo_file = parse_todo_file(content).unwrap();
         assert_eq!(todo_file.title, "TODOs");
-        
+
         // Now all tasks are in the single task list
         assert_eq!(todo_file.tasks.len(), 6); // All tasks are top-level now (including code block content)
-        
+
         // First task (dash) has no subtasks
         assert_eq!(todo_file.tasks[0].text, "Task with dash");
         assert_eq!(todo_file.tasks[0].subtasks.len(), 0);
-        
-        // Second task (asterisk) has no subtasks  
+
+        // Second task (asterisk) has no subtasks
         assert_eq!(todo_file.tasks[1].text, "Task with asterisk");
         assert_eq!(todo_file.tasks[1].subtasks.len(), 0);
-        
+
         // Third task (plus) has all the subtasks (different indentation styles)
         assert_eq!(todo_file.tasks[2].text, "Task with plus");
         assert_eq!(todo_file.tasks[2].subtasks.len(), 4);
-        
+
         // Plain text task and normal task
         assert_eq!(todo_file.tasks[3].text, "Plain text task without bullet");
         assert_eq!(todo_file.tasks[4].text, "Normal task");

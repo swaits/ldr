@@ -11,6 +11,7 @@ keywords = ["todo", "cli", "productivity"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+anyhow = "1.0"
 clap = { version = "4.5.41", features = ["derive"] }
 xdg = "3.0.0"
 termion = "4.0.5"
